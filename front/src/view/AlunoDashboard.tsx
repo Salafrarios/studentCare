@@ -6,11 +6,11 @@ import { apiService, CadastroNeurodivergente } from "@/model/api";
 
 const CONDICOES = [
   { value: "", label: "Selecione uma condição" },
-  { value: "TEA", label: "TEA - Transtorno do Espectro Autista" },
-  { value: "TDAH", label: "TDAH - Transtorno do Déficit de Atenção e Hiperatividade" },
   { value: "Dislexia", label: "Dislexia" },
   { value: "Ansiedade Generalizada", label: "Ansiedade Generalizada" },
+  { value: "TEA", label: "TEA - Transtorno do Espectro Autista" },
   { value: "TOC", label: "TOC - Transtorno Obsessivo-Compulsivo" },
+  { value: "TDAH", label: "TDAH - Transtorno do Déficit de Atenção e Hiperatividade" },
   { value: "Outro", label: "Outro" },
 ];
 

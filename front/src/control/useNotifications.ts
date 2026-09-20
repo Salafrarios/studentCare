@@ -16,7 +16,6 @@ export function useNotifications() {
       const data = await apiService.getNotificacoes();
       setNotificacoes(data);
     } catch {
-      // Silencia erros quando backend não está disponível
     } finally {
       setIsLoading(false);
     }

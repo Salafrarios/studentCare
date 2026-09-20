@@ -20,22 +20,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const stored = localStorage.getItem("studentcare_user");
-    const token = apiService.getToken();
-    if (stored && token) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem("studentcare_user");
-        apiService.clearToken();
-      }
-    }
-    setIsLoading(false);
-  }, []);
+  // O dev de backend FastAPI integrará a persistência e validação de sessão (cookies HTTP-Only ou /auth/me).
+  // Sessão e token gerenciados estritamente em memória no cliente.
 
   const login = useCallback(async (email: string, senha: string) => {
     setIsLoading(true);
@@ -43,7 +32,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await apiService.login(email, senha);
       setUser(response.user);
-      localStorage.setItem("studentcare_user", JSON.stringify(response.user));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao fazer login";
       setError(message);
@@ -57,7 +45,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setError(null);
     apiService.clearToken();
-    localStorage.removeItem("studentcare_user");
   }, []);
 
   const clearError = useCallback(() => setError(null), []);

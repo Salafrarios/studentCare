@@ -75,26 +75,23 @@ export interface Notificacao {
 
 class ApiService {
   private baseUrl: string;
+  // O token e sessão são mantidos em memória. O backend FastAPI gerencia autenticação (Cookies HttpOnly ou Bearer Token).
+  private token: string | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
   }
 
   getToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("studentcare_token");
+    return this.token;
   }
 
   setToken(token: string): void {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("studentcare_token", token);
-    }
+    this.token = token;
   }
 
   clearToken(): void {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("studentcare_token");
-    }
+    this.token = null;
   }
 
   private async request<T>(
@@ -111,7 +108,12 @@ class ApiService {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const config: RequestInit = { method, headers };
+    // credentials: "include" permite que FastAPI utilize cookies HTTP-Only de sessão/JWT nativamente
+    const config: RequestInit = {
+      method,
+      headers,
+      credentials: "include",
+    };
 
     if (body && method !== "GET") {
       config.body = JSON.stringify(body);

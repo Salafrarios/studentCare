@@ -100,22 +100,15 @@ class MockApiService {
   private token: string | null = null;
 
   getToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("studentcare_token");
+    return this.token;
   }
 
   setToken(token: string): void {
     this.token = token;
-    if (typeof window !== "undefined") {
-      localStorage.setItem("studentcare_token", token);
-    }
   }
 
   clearToken(): void {
     this.token = null;
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("studentcare_token");
-    }
   }
 
   // ==================== AUTH ====================
@@ -126,11 +119,11 @@ class MockApiService {
     const usuarios: Record<string, LoginResponse> = {
       "aluno@teste.com": {
         token: "mock-token-aluno-xyz",
-        user: { id: "usr-001", nome: "Ana Costa", email: "aluno@teste.com", role: "aluno" },
+        user: { id: "usr-001", nome: "Wilian de Lima Santos", email: "aluno@teste.com", role: "aluno" },
       },
       "professor@teste.com": {
         token: "mock-token-professor-xyz",
-        user: { id: "usr-002", nome: "Prof. Ricardo Mendes", email: "professor@teste.com", role: "professor" },
+        user: { id: "usr-002", nome: "Prof. João da Silva", email: "professor@teste.com", role: "professor" },
       },
       "coacessi@teste.com": {
         token: "mock-token-coacessi-xyz",
@@ -159,7 +152,7 @@ class MockApiService {
     await delay();
     return {
       id: "usr-001",
-      nome: "Ana Costa",
+      nome: "Wilian de Lima Santos",
       email: "aluno@teste.com",
       cadastro_neurodivergente: cadastroAluno || undefined,
       data_cadastro: cadastroAluno ? new Date().toISOString() : undefined,

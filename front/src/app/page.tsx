@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/control/AuthContext";
 import LoginForm from "@/view/LoginForm";
+import InteractiveCanvas from "@/view/InteractiveCanvas";
 
 export default function HomePage() {
   const { isAuthenticated, user, isLoading } = useAuth();
@@ -34,8 +35,14 @@ export default function HomePage() {
   if (isAuthenticated) return null;
 
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
-      <LoginForm />
+    <div className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 overflow-hidden">
+      {/* Canvas interativo com partículas e mouse na cor verde */}
+      <InteractiveCanvas />
+
+      {/* Conteúdo sobreposto */}
+      <div className="relative z-10 w-full flex justify-center py-8">
+        <LoginForm />
+      </div>
     </div>
   );
 }
