@@ -2,10 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# libgl1/libglib2.0-0: exigidos pelo opencv-contrib-python (dependência do
-# mediapipe) mesmo sem abrir janela.
+# libgl1/libglib2.0-0/libegl1/libgles2: exigidos pelo opencv-contrib-python
+# e pelo runtime do mediapipe (libEGL.so.1, libGLESv2.so.2) mesmo rodando só
+# em CPU, sem GUI — sem eles o PoseLandmarker falha ao iniciar.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgl1 libglib2.0-0 \
+        libgl1 libglib2.0-0 libegl1 libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
