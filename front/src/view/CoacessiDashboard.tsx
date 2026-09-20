@@ -9,14 +9,15 @@ export default function CoacessiDashboard() {
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const [alertas, setAlertas] = useState<Alerta[]>([]);
-  const [stats, setStats] = useState<Estatisticas>({ total_alertas_hoje: 0, falsos_alarmes: 0, crises_confirmadas: 0, em_analise: 0, em_andamento: 0 });
+  const [stats, setStats] = useState<Estatisticas>({ total_alertas_hoje: 0, falsos_alarmes: 0, crises_confirmadas: 0, em_analise: 0, em_atendimento: 0 });
   const [selectedAlerta, setSelectedAlerta] = useState<Alerta | null>(null);
   const [proximoStatus, setProximoStatus] = useState<StatusAlerta>("em_analise");
   const [descricaoIntervencao, setDescricaoIntervencao] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [assumindo, setAssumindo] = useState(false);
   const [iniciandoAtendimento, setIniciandoAtendimento] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-  const [filtroStatus, setFiltroStatus] = useState<"todos" | "novo" | "em_analise" | "em_andamento" | "resolvido">("todos");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusAlerta>("todos");
 
   const carregarDados = useCallback(async () => {
     try {
@@ -37,20 +38,48 @@ export default function CoacessiDashboard() {
     return () => clearInterval(interval);
   }, [carregarDados]);
 
+  const abrirDetalhes = (alerta: Alerta) => {
+    setSelectedAlerta(alerta);
+    setProximoStatus(alerta.status === "novo" ? "em_analise" : alerta.status);
+    setDescricaoIntervencao("");
+  };
+
+  const handleAssumir = async () => {
+    if (!selectedAlerta) return;
+    setAssumindo(true);
+    setFeedback(null);
+    try {
+      const res = await apiService.atribuirAlerta(selectedAlerta.id);
+      setFeedback({ type: "success", msg: res.message });
+      setSelectedAlerta((prev) => (prev ? { ...prev, profissional_atribuido: res.profissional } : prev));
+      carregarDados();
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Erro ao assumir o alerta.",
+      });
+    } finally {
+      setAssumindo(false);
+    }
+  };
+
+  /** Assume o alerta (se necessário) e marca como suporte em andamento — atalho para o fluxo mais comum. */
   const handleIniciarAtendimento = async (alertaId?: string) => {
     const id = alertaId || selectedAlerta?.id;
     if (!id) return;
     setIniciandoAtendimento(true);
     setFeedback(null);
     try {
-      await apiService.iniciarAtendimento(id);
-      if (selectedAlerta && selectedAlerta.id === id) {
-        setSelectedAlerta({ ...selectedAlerta, status: "em_andamento" });
+      const alertaAtual = alertas.find((a) => a.id === id) || selectedAlerta;
+      if (!alertaAtual?.profissional_atribuido) {
+        await apiService.atribuirAlerta(id);
       }
-      setFeedback({
-        type: "success",
-        msg: "Atendimento iniciado com sucesso! Status alterado para 'Em andamento'.",
-      });
+      await apiService.atualizarStatusAlerta(id, "suporte_em_progresso");
+      setFeedback({ type: "success", msg: "Atendimento iniciado com sucesso!" });
+      if (selectedAlerta?.id === id) {
+        setSelectedAlerta((prev) => (prev ? { ...prev, status: "suporte_em_progresso" } : prev));
+        setProximoStatus("resolvido");
+      }
       carregarDados();
     } catch (err) {
       setFeedback({
@@ -62,13 +91,18 @@ export default function CoacessiDashboard() {
     }
   };
 
-  const handleResolver = async () => {
+  const handleSalvarAcao = async () => {
     if (!selectedAlerta) return;
     setSalvando(true);
     setFeedback(null);
     try {
-      await apiService.resolverAlerta(selectedAlerta.id, { resultado, observacao });
-      setFeedback({ type: "success", msg: "Atendimento concluído e análise salva com sucesso!" });
+      if (descricaoIntervencao.trim()) {
+        await apiService.registrarIntervencao(selectedAlerta.id, descricaoIntervencao.trim());
+      }
+      if (proximoStatus !== selectedAlerta.status) {
+        await apiService.atualizarStatusAlerta(selectedAlerta.id, proximoStatus);
+      }
+      setFeedback({ type: "success", msg: "Ação registrada com sucesso!" });
       setSelectedAlerta(null);
       setDescricaoIntervencao("");
       carregarDados();
@@ -85,7 +119,7 @@ export default function CoacessiDashboard() {
   const statusConfig: Record<StatusAlerta, { label: string; badge: string; border: string }> = {
     novo: { label: "Novo", badge: "bg-amber-100 text-amber-700", border: "border-l-amber-400" },
     em_analise: { label: "Em análise", badge: "bg-emerald-100 text-emerald-700", border: "border-l-emerald-500" },
-    em_andamento: { label: "Em andamento", badge: "bg-blue-100 text-blue-700", border: "border-l-blue-500" },
+    suporte_em_progresso: { label: "Suporte em andamento", badge: "bg-sky-100 text-sky-700", border: "border-l-sky-400" },
     resolvido: { label: "Resolvido", badge: "bg-gray-100 text-gray-500", border: "border-l-gray-300" },
     descartado: { label: "Descartado", badge: "bg-slate-100 text-slate-400", border: "border-l-slate-200" },
   };
@@ -108,13 +142,19 @@ export default function CoacessiDashboard() {
     { label: "Crises Confirmadas", value: stats.crises_confirmadas, color: "text-red-600", bg: "bg-red-50" },
     { label: "Falsos Alarmes", value: stats.falsos_alarmes, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Em Análise", value: stats.em_analise, color: "text-emerald-700", bg: "bg-emerald-50" },
-    { label: "Em Andamento", value: stats.em_andamento, color: "text-blue-700", bg: "bg-blue-50" },
+    { label: "Em Atendimento", value: stats.em_atendimento, color: "text-sky-700", bg: "bg-sky-50" },
   ];
 
-  const alertasFiltrados = alertas.filter((a) => {
-    if (filtroStatus === "todos") return true;
-    return a.status === filtroStatus;
-  });
+  const filtros: { id: "todos" | StatusAlerta; label: string }[] = [
+    { id: "todos", label: "Todos" },
+    { id: "novo", label: "Novos" },
+    { id: "em_analise", label: "Em análise" },
+    { id: "suporte_em_progresso", label: "Em atendimento" },
+    { id: "resolvido", label: "Resolvidos" },
+    { id: "descartado", label: "Descartados" },
+  ];
+
+  const alertasFiltrados = alertas.filter((a) => filtroStatus === "todos" || a.status === filtroStatus);
 
   return (
     <div className="space-y-6">
@@ -156,17 +196,11 @@ export default function CoacessiDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <h3 className="text-lg font-bold text-gray-900">Alertas e Atendimentos</h3>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {[
-              { id: "todos", label: "Todos", count: alertas.length },
-              { id: "novo", label: "Novos", count: alertas.filter((a) => a.status === "novo").length },
-              { id: "em_analise", label: "Em análise", count: alertas.filter((a) => a.status === "em_analise").length },
-              { id: "em_andamento", label: "Em andamento", count: alertas.filter((a) => a.status === "em_andamento").length },
-              { id: "resolvido", label: "Resolvidos", count: alertas.filter((a) => a.status === "resolvido").length },
-            ].map((tab) => (
+            {filtros.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setFiltroStatus(tab.id as typeof filtroStatus)}
+                onClick={() => setFiltroStatus(tab.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
                   filtroStatus === tab.id
                     ? "bg-gray-900 text-white shadow-xs"
@@ -179,7 +213,7 @@ export default function CoacessiDashboard() {
                     filtroStatus === tab.id ? "bg-gray-700 text-white" : "bg-gray-200 text-gray-700"
                   }`}
                 >
-                  {tab.count}
+                  {tab.id === "todos" ? alertas.length : alertas.filter((a) => a.status === tab.id).length}
                 </span>
               </button>
             ))}
@@ -191,33 +225,29 @@ export default function CoacessiDashboard() {
             <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p>Nenhum alerta {filtroStatus !== "todos" ? `com status "${statusConfig[filtroStatus]?.label || filtroStatus}"` : "ativo"} no momento.</p>
-            <p className="text-sm mt-1">Os alertas aparecerão aqui quando crises forem detectadas ou solicitadas.</p>
+            <p>Nenhum alerta {filtroStatus !== "todos" ? `com status "${statusConfig[filtroStatus].label}"` : "ativo"} no momento.</p>
+            <p className="text-sm mt-1">Os alertas aparecerão aqui quando indicadores forem detectados ou solicitados.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {alertasFiltrados.map((alerta) => {
-              const config = statusConfig[alerta.status] || statusConfig.novo;
+              const config = statusConfig[alerta.status];
               const prioridade = prioridadeConfig[alerta.prioridade];
               return (
                 <div
                   key={alerta.id}
-                  onClick={() => {
-                    setSelectedAlerta(alerta);
-                    setProximoStatus(alerta.status === "novo" ? "em_analise" : alerta.status);
-                    setDescricaoIntervencao("");
-                  }}
+                  onClick={() => abrirDetalhes(alerta)}
                   className={`w-full text-left bg-white rounded-xl border border-gray-100 border-l-4 ${config.border} p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <span className="font-semibold text-gray-900">{alerta.tipo_crise}</span>
+                        <span className="font-semibold text-gray-900">{alerta.indicador_comportamental}</span>
                         <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${config.badge}`}>
-                          {alerta.status === "em_andamento" && (
+                          {alerta.status === "suporte_em_progresso" && (
                             <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-600"></span>
                             </span>
                           )}
                           {config.label}
@@ -251,8 +281,8 @@ export default function CoacessiDashboard() {
                             handleIniciarAtendimento(alerta.id);
                           }}
                           disabled={iniciandoAtendimento}
-                          className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
-                          title="Iniciar atendimento para este chamado"
+                          className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 transition-colors cursor-pointer"
+                          title="Iniciar atendimento para este alerta"
                         >
                           <span>▶</span> Iniciar Atendimento
                         </button>
@@ -276,8 +306,8 @@ export default function CoacessiDashboard() {
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-2.5">
                 <h3 className="text-lg font-bold text-gray-900">Detalhes do Alerta</h3>
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusConfig[selectedAlerta.status]?.badge || statusConfig.novo.badge}`}>
-                  {statusConfig[selectedAlerta.status]?.label || selectedAlerta.status}
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusConfig[selectedAlerta.status].badge}`}>
+                  {statusConfig[selectedAlerta.status].label}
                 </span>
               </div>
               <button
@@ -291,63 +321,55 @@ export default function CoacessiDashboard() {
             </div>
 
             <div className="space-y-4">
-              {/* Status banner / Ação de Iniciar Atendimento */}
-              {selectedAlerta.status === "em_andamento" && (
-                <div className="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-sm">
-                  <span className="relative flex h-3 w-3 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span>
-                  </span>
-                  <div>
-                    <p className="font-semibold text-blue-900">Atendimento em Andamento</p>
-                    <p className="text-xs text-blue-700 mt-0.5">
-                      O atendimento foi requisitado e iniciado. Após prestar o auxílio necessário, preencha a classificação abaixo para concluir.
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* Aviso de responsabilidade humana */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                Este alerta é um indicador que requer avaliação humana — não é uma crise confirmada nem um diagnóstico.
+                As previsões do modelo de visão computacional podem estar incorretas.
+              </div>
 
+              {/* Ação rápida para alertas ainda não atendidos */}
               {(selectedAlerta.status === "novo" || selectedAlerta.status === "em_analise") && (
-                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+                <div className="p-4 bg-sky-50/70 border border-sky-200 rounded-xl space-y-3">
                   <div>
-                    <p className="font-semibold text-amber-900 text-sm">Atendimento Requisitado</p>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      O alerta foi recebido e aguarda início do atendimento pela equipe. Inicie para sinalizar que a ocorrência está sob cuidados.
+                    <p className="font-semibold text-sky-900 text-sm">Atendimento Requisitado</p>
+                    <p className="text-xs text-sky-700 mt-0.5">
+                      O alerta foi recebido e aguarda início do atendimento pela equipe.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleIniciarAtendimento()}
                     disabled={iniciandoAtendimento}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors cursor-pointer text-sm flex items-center justify-center gap-2 shadow-xs"
+                    className="w-full bg-sky-600 hover:bg-sky-700 disabled:bg-sky-300 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors cursor-pointer text-sm"
                   >
-                    {iniciandoAtendimento ? (
-                      <>
-                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Iniciando atendimento...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Iniciar Atendimento (Marcar como Em Andamento)
-                      </>
-                    )}
+                    {iniciandoAtendimento ? "Iniciando atendimento..." : "Iniciar Atendimento"}
                   </button>
                 </div>
               )}
 
-              {selectedAlerta.status === "resolvido" && (
+              {selectedAlerta.status === "suporte_em_progresso" && (
+                <div className="flex items-center gap-3 p-3.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-sm">
+                  <span className="relative flex h-3 w-3 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-600"></span>
+                  </span>
+                  <div>
+                    <p className="font-semibold text-sky-900">Suporte em Andamento</p>
+                    <p className="text-xs text-sky-700 mt-0.5">
+                      Após prestar o auxílio necessário, registre a ação e atualize o status abaixo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {(selectedAlerta.status === "resolvido" || selectedAlerta.status === "descartado") && (
                 <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 text-sm">
                   <svg className="w-5 h-5 text-emerald-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
-                  <span className="font-semibold text-gray-800">Atendimento Concluído & Resolvido</span>
+                  <span className="font-semibold text-gray-800">
+                    {selectedAlerta.status === "resolvido" ? "Evento Resolvido" : "Alerta Descartado (falso positivo)"}
+                  </span>
                 </div>
               )}
 
@@ -395,43 +417,36 @@ export default function CoacessiDashboard() {
               {/* Snapshot placeholder */}
               <div className="bg-black rounded-lg aspect-video flex items-center justify-center text-gray-500 text-sm">
                 {selectedAlerta.snapshot_url ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={selectedAlerta.snapshot_url} alt="Snapshot da câmera" className="w-full h-full object-cover rounded-lg" />
                 ) : (
                   <p>Snapshot da câmera indisponível</p>
                 )}
               </div>
 
-              {/* Classificação / Resolução */}
-              {selectedAlerta.status !== "resolvido" && (
+              {/* Histórico de intervenções */}
+              <div className="border-t pt-4">
+                <p className="font-semibold text-gray-900 mb-2">Histórico de Intervenções</p>
+                {selectedAlerta.historico_intervencoes.length === 0 ? (
+                  <p className="text-sm text-gray-400">Nenhuma intervenção registrada ainda.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {selectedAlerta.historico_intervencoes.map((intervencao) => (
+                      <li key={intervencao.id} className="text-sm bg-gray-50 rounded-lg p-3">
+                        <p className="text-gray-800">{intervencao.descricao}</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {intervencao.profissional.nome} — {new Date(intervencao.timestamp).toLocaleString("pt-BR")}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Ação */}
+              {selectedAlerta.status !== "resolvido" && selectedAlerta.status !== "descartado" && (
                 <div className="border-t pt-4">
-                  <p className="font-semibold text-gray-900 mb-3">
-                    {selectedAlerta.status === "em_andamento" ? "Finalizar Atendimento & Classificação" : "Classificação do Alerta"}
-                  </p>
-                  <div className="flex gap-3 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => setResultado("confirmado")}
-                      className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all cursor-pointer ${
-                        resultado === "confirmado"
-                          ? "bg-red-500 text-white shadow-md"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      Confirmar Crise
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setResultado("falso_alarme")}
-                      className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all cursor-pointer ${
-                        resultado === "falso_alarme"
-                          ? "bg-amber-500 text-white shadow-md"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      Falso Alarme
-                    </button>
-                  </div>
+                  <p className="font-semibold text-gray-900 mb-3">Registrar Ação</p>
                   <div className="mb-4">
                     <label htmlFor="obs" className="block text-sm font-semibold text-gray-700 mb-1.5">
                       Descrição da intervenção (opcional)
@@ -465,7 +480,7 @@ export default function CoacessiDashboard() {
                     disabled={salvando}
                     className="w-full bg-emerald-700 hover:bg-emerald-600 disabled:bg-emerald-400 text-white font-semibold py-3 rounded-lg transition-colors cursor-pointer"
                   >
-                    {salvando ? "Salvando..." : selectedAlerta.status === "em_andamento" ? "Concluir Atendimento & Salvar" : "Salvar Análise"}
+                    {salvando ? "Salvando..." : "Salvar Ação"}
                   </button>
                 </div>
               )}
