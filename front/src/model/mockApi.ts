@@ -153,6 +153,19 @@ const alertasMock: Alerta[] = [
   },
   {
     id: "alerta-003",
+    timestamp: new Date(Date.now() - 25 * 60000).toISOString(),
+    sala: "Sala 103",
+    tipo_crise: "Meltdown",
+    status: "em_andamento",
+    confianca: 0.88,
+    aluno_info: {
+      nome: "Pedro Santos",
+      condicao: "TEA",
+      contato_emergencia: "(81) 98765-4321",
+    },
+  },
+  {
+    id: "alerta-004",
     timestamp: new Date(Date.now() - 45 * 60000).toISOString(),
     sala: "Sala 202",
     indicador_comportamental: "Movimentos repetitivos persistentes",
@@ -162,7 +175,7 @@ const alertasMock: Alerta[] = [
     historico_intervencoes: [],
   },
   {
-    id: "alerta-004",
+    id: "alerta-005",
     timestamp: new Date(Date.now() - 120 * 60000).toISOString(),
     sala: "Auditório",
     indicador_comportamental: "Mudança abrupta no padrão de movimento",
@@ -313,6 +326,22 @@ class MockApiService {
   async chamarAuxilio(dados: ChamadoAuxilio): Promise<{ message: string; chamado_id: string }> {
     await delay(1000);
     const chamadoId = `chamado-${Date.now()}`;
+    const novoAlerta: Alerta = {
+      id: `alerta-${Date.now().toString().slice(-4)}`,
+      timestamp: new Date().toISOString(),
+      sala: dados.sala,
+      tipo_crise: dados.tipo || "Crise não especificada",
+      status: "novo",
+      confianca: 1.0,
+    };
+    alertasMock.unshift(novoAlerta);
+    notificacoesMock.unshift({
+      id: `notif-${Date.now()}`,
+      mensagem: `Novo chamado de auxílio requisitado: ${dados.tipo || "Ocorrência"} na ${dados.sala}`,
+      tipo: "alerta",
+      timestamp: new Date().toISOString(),
+      lida: false,
+    });
     console.log(
       `%c🚨 CHAMADO DE AUXÍLIO ENVIADO!`,
       "color: #E63946; font-weight: bold; font-size: 16px;",
@@ -335,9 +364,28 @@ class MockApiService {
     return { ...alerta };
   }
 
-  async atribuirAlerta(alertaId: string): Promise<{ message: string; profissional: Profissional }> {
+  async iniciarAtendimento(alertaId: string): Promise<{ message: string }> {
     await delay(500);
-    if (!this.usuarioAtual) throw new Error("Usuário não autenticado.");
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    alerta.status = "em_andamento";
+    console.log(
+      `%c⏳ Atendimento do alerta ${alertaId} iniciado (status: em_andamento)`,
+      "color: #1D4ED8; font-weight: bold;"
+    );
+    return { message: "Atendimento iniciado com sucesso!" };
+  }
+
+  async atualizarStatusAlerta(alertaId: string, status: Alerta["status"]): Promise<{ message: string }> {
+    await delay(400);
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    alerta.status = status;
+    return { message: "Status atualizado com sucesso!" };
+  }
+
+  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
+    await delay(800);
     const idx = alertasMock.findIndex((a) => a.id === alertaId);
     if (idx === -1) throw new Error("Alerta não encontrado");
     const profissional: Profissional = { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome };
@@ -382,9 +430,10 @@ class MockApiService {
     await delay(300);
     return {
       total_alertas_hoje: alertasMock.length,
-      crises_confirmadas: alertasMock.filter((a) => a.status === "resolvido").length,
-      falsos_alarmes: alertasMock.filter((a) => a.status === "descartado").length,
-      em_analise: alertasMock.filter((a) => a.status === "em_analise" || a.status === "suporte_em_progresso").length,
+      crises_confirmadas: Math.max(1, resolvidos),
+      falsos_alarmes: 1,
+      em_analise: alertasMock.filter((a) => a.status === "em_analise").length,
+      em_andamento: alertasMock.filter((a) => a.status === "em_andamento").length,
     };
   }
 

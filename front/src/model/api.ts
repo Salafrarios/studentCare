@@ -3,6 +3,8 @@
  * Comunicação com backend FastAPI
  */
 
+import { mockApiService } from "./mockApi";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 export interface UserData {
@@ -58,11 +60,8 @@ export interface Alerta {
   id: string;
   timestamp: string;
   sala: string;
-  /** Indicador comportamental observado — não é um diagnóstico nem uma crise confirmada. */
-  indicador_comportamental: string;
-  status: StatusAlerta;
-  /** Prioridade avaliada para triagem; independente da confiança do modelo e ajustável pela equipe. */
-  prioridade: PrioridadeAlerta;
+  tipo_crise: string;
+  status: "novo" | "em_analise" | "em_andamento" | "resolvido";
   confianca: number;
   profissional_atribuido?: Profissional;
   historico_intervencoes: Intervencao[];
@@ -81,6 +80,7 @@ export interface Estatisticas {
   falsos_alarmes: number;
   crises_confirmadas: number;
   em_analise: number;
+  em_andamento: number;
 }
 
 export interface Notificacao {
@@ -200,21 +200,16 @@ class ApiService {
     return this.request<Alerta>(`/coacessi/alertas/${alertaId}`);
   }
 
-  /** Auto-atribuição ("assumir alerta"): o profissional responsável é sempre o usuário autenticado, nunca informado pelo cliente. */
-  async atribuirAlerta(alertaId: string): Promise<{ message: string; profissional: Profissional }> {
-    return this.request(`/coacessi/alertas/${alertaId}/atribuir`, "PATCH");
+  async iniciarAtendimento(alertaId: string): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}/iniciar`, "PUT");
   }
 
-  async atualizarStatusAlerta(alertaId: string, status: StatusAlerta): Promise<{ message: string }> {
+  async atualizarStatusAlerta(alertaId: string, status: Alerta["status"]): Promise<{ message: string }> {
     return this.request(`/coacessi/alertas/${alertaId}/status`, "PATCH", { status });
   }
 
-  async atualizarPrioridadeAlerta(alertaId: string, prioridade: PrioridadeAlerta): Promise<{ message: string }> {
-    return this.request(`/coacessi/alertas/${alertaId}/prioridade`, "PATCH", { prioridade });
-  }
-
-  async registrarIntervencao(alertaId: string, descricao: string): Promise<{ message: string; intervencao: Intervencao }> {
-    return this.request(`/coacessi/alertas/${alertaId}/intervencoes`, "POST", { descricao });
+  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}`, "PUT", resolucao);
   }
 
   async getEstatisticas(): Promise<Estatisticas> {
@@ -262,10 +257,8 @@ class ApiService {
  *   professor@teste.com / 123456
  *   coacessi@teste.com  / 123456
  */
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const useMock = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
 export const apiService: ApiService = useMock
-  ? (require("./mockApi").mockApiService as ApiService)
+  ? (mockApiService as unknown as ApiService)
   : new ApiService();
