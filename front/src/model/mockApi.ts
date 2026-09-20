@@ -14,7 +14,10 @@ import {
   CadastroNeurodivergente,
   ChamadoAuxilio,
   Alerta,
-  ResolucaoAlerta,
+  StatusAlerta,
+  PrioridadeAlerta,
+  Profissional,
+  Intervencao,
   Estatisticas,
   Notificacao,
   Sala,
@@ -102,17 +105,23 @@ const salasMock: Sala[] = [
   },
 ];
 
+const profissionalCarla: Profissional = { id: "usr-003", nome: "Carla Rodrigues" };
+
 const alertasMock: Alerta[] = [
   {
     id: "alerta-001",
     timestamp: new Date(Date.now() - 5 * 60000).toISOString(),
     sala: "Sala 101",
-    tipo_crise: "Meltdown",
+    indicador_comportamental: "Agitação motora intensa",
     status: "novo",
+    prioridade: "alta",
     confianca: 0.92,
+    historico_intervencoes: [],
     aluno_info: {
       nome: "Maria Silva",
       condicao: "TEA",
+      comunicacao_preferida: "Mensagem de texto, evitar contato visual prolongado",
+      diretrizes_apoio: "Oferecer ambiente com menos estímulos sensoriais antes de iniciar qualquer conversa.",
       contato_emergencia: "(81) 99999-1234",
     },
     snapshot_url: undefined,
@@ -121,12 +130,24 @@ const alertasMock: Alerta[] = [
     id: "alerta-002",
     timestamp: new Date(Date.now() - 18 * 60000).toISOString(),
     sala: "Lab. Informática 1",
-    tipo_crise: "Crise de Ansiedade",
-    status: "em_analise",
+    indicador_comportamental: "Tentativa recorrente de deixar o ambiente",
+    status: "suporte_em_progresso",
+    prioridade: "media",
     confianca: 0.78,
+    profissional_atribuido: profissionalCarla,
+    historico_intervencoes: [
+      {
+        id: "interv-001",
+        timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
+        profissional: profissionalCarla,
+        descricao: "Contato inicial realizado; aluno encaminhado para sala de apoio.",
+      },
+    ],
     aluno_info: {
       nome: "João Oliveira",
       condicao: "Ansiedade Generalizada",
+      comunicacao_preferida: "Conversa em voz baixa, sem urgência aparente",
+      diretrizes_apoio: "Reduzir ruído ao redor e permitir pausas breves durante o atendimento.",
       contato_emergencia: "(81) 98888-5678",
     },
   },
@@ -134,17 +155,46 @@ const alertasMock: Alerta[] = [
     id: "alerta-003",
     timestamp: new Date(Date.now() - 45 * 60000).toISOString(),
     sala: "Sala 202",
-    tipo_crise: "Crise de Pânico",
-    status: "novo",
+    indicador_comportamental: "Movimentos repetitivos persistentes",
+    status: "em_analise",
+    prioridade: "media",
     confianca: 0.85,
+    historico_intervencoes: [],
   },
   {
     id: "alerta-004",
     timestamp: new Date(Date.now() - 120 * 60000).toISOString(),
     sala: "Auditório",
-    tipo_crise: "Meltdown",
+    indicador_comportamental: "Mudança abrupta no padrão de movimento",
     status: "resolvido",
+    prioridade: "baixa",
+    confianca: 0.68,
+    profissional_atribuido: profissionalCarla,
+    historico_intervencoes: [
+      {
+        id: "interv-002",
+        timestamp: new Date(Date.now() - 100 * 60000).toISOString(),
+        profissional: profissionalCarla,
+        descricao: "Aluno avaliado presencialmente; situação contornada com pausa breve.",
+      },
+    ],
+  },
+  {
+    id: "alerta-005",
+    timestamp: new Date(Date.now() - 150 * 60000).toISOString(),
+    sala: "Sala 102",
+    indicador_comportamental: "Padrão de movimento sem indicação clara",
+    status: "descartado",
+    prioridade: "baixa",
     confianca: 0.41,
+    historico_intervencoes: [
+      {
+        id: "interv-003",
+        timestamp: new Date(Date.now() - 148 * 60000).toISOString(),
+        profissional: profissionalCarla,
+        descricao: "Verificado por câmera; sem necessidade de intervenção. Provável falso positivo.",
+      },
+    ],
   },
 ];
 
@@ -175,6 +225,8 @@ const notificacoesMock: Notificacao[] = [
 /** Mock do serviço de API */
 class MockApiService {
   private token: string | null = null;
+  /** Usuário autenticado no mock — usado para inferir o profissional em ações da COACESSI, nunca recebido do cliente. */
+  private usuarioAtual: LoginResponse["user"] | null = null;
 
   getToken(): string | null {
     return this.token;
@@ -186,6 +238,7 @@ class MockApiService {
 
   clearToken(): void {
     this.token = null;
+    this.usuarioAtual = null;
   }
 
   // ==================== AUTH ====================
@@ -224,6 +277,7 @@ class MockApiService {
     );
 
     this.setToken(found.token);
+    this.usuarioAtual = found.user;
     return found;
   }
 
@@ -281,28 +335,56 @@ class MockApiService {
     return { ...alerta };
   }
 
-  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
-    await delay(800);
+  async atribuirAlerta(alertaId: string): Promise<{ message: string; profissional: Profissional }> {
+    await delay(500);
+    if (!this.usuarioAtual) throw new Error("Usuário não autenticado.");
     const idx = alertasMock.findIndex((a) => a.id === alertaId);
-    if (idx >= 0) {
-      alertasMock[idx].status = "resolvido";
-    }
-    console.log(
-      `%c✅ Alerta ${alertaId} resolvido:`,
-      "color: #2D6A4F; font-weight: bold;",
-      resolucao
-    );
-    return { message: "Análise salva com sucesso!" };
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const profissional: Profissional = { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome };
+    alertasMock[idx].profissional_atribuido = profissional;
+    return { message: "Alerta assumido com sucesso!", profissional };
+  }
+
+  async atualizarStatusAlerta(alertaId: string, status: StatusAlerta): Promise<{ message: string }> {
+    await delay(600);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    alertasMock[idx].status = status;
+    console.log(`%c🔄 Alerta ${alertaId} → status "${status}"`, "color: #2D6A4F; font-weight: bold;");
+    return { message: "Status atualizado com sucesso!" };
+  }
+
+  async atualizarPrioridadeAlerta(alertaId: string, prioridade: PrioridadeAlerta): Promise<{ message: string }> {
+    await delay(400);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    alertasMock[idx].prioridade = prioridade;
+    return { message: "Prioridade atualizada com sucesso!" };
+  }
+
+  async registrarIntervencao(alertaId: string, descricao: string): Promise<{ message: string; intervencao: Intervencao }> {
+    await delay(700);
+    if (!this.usuarioAtual) throw new Error("Usuário não autenticado.");
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const intervencao: Intervencao = {
+      id: `interv-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      profissional: { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome },
+      descricao,
+    };
+    alertasMock[idx].historico_intervencoes = [...alertasMock[idx].historico_intervencoes, intervencao];
+    console.log("%c📝 Intervenção registrada:", "color: #2D6A4F; font-weight: bold;", intervencao);
+    return { message: "Intervenção registrada com sucesso!", intervencao };
   }
 
   async getEstatisticas(): Promise<Estatisticas> {
     await delay(300);
-    const resolvidos = alertasMock.filter((a) => a.status === "resolvido").length;
     return {
       total_alertas_hoje: alertasMock.length,
-      crises_confirmadas: Math.max(1, resolvidos),
-      falsos_alarmes: 1,
-      em_analise: alertasMock.filter((a) => a.status === "em_analise").length,
+      crises_confirmadas: alertasMock.filter((a) => a.status === "resolvido").length,
+      falsos_alarmes: alertasMock.filter((a) => a.status === "descartado").length,
+      em_analise: alertasMock.filter((a) => a.status === "em_analise" || a.status === "suporte_em_progresso").length,
     };
   }
 

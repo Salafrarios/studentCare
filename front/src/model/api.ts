@@ -38,24 +38,42 @@ export interface ChamadoAuxilio {
   descricao: string;
 }
 
+export type StatusAlerta = "novo" | "em_analise" | "suporte_em_progresso" | "resolvido" | "descartado";
+
+export type PrioridadeAlerta = "baixa" | "media" | "alta";
+
+export interface Profissional {
+  id: string;
+  nome: string;
+}
+
+export interface Intervencao {
+  id: string;
+  timestamp: string;
+  profissional: Profissional;
+  descricao: string;
+}
+
 export interface Alerta {
   id: string;
   timestamp: string;
   sala: string;
-  tipo_crise: string;
-  status: "novo" | "em_analise" | "resolvido";
+  /** Indicador comportamental observado — não é um diagnóstico nem uma crise confirmada. */
+  indicador_comportamental: string;
+  status: StatusAlerta;
+  /** Prioridade avaliada para triagem; independente da confiança do modelo e ajustável pela equipe. */
+  prioridade: PrioridadeAlerta;
   confianca: number;
+  profissional_atribuido?: Profissional;
+  historico_intervencoes: Intervencao[];
   aluno_info?: {
     nome: string;
     condicao: string;
-    contato_emergencia: string;
+    comunicacao_preferida?: string;
+    diretrizes_apoio?: string;
+    contato_emergencia?: string;
   };
   snapshot_url?: string;
-}
-
-export interface ResolucaoAlerta {
-  resultado: "confirmado" | "falso_alarme";
-  observacao: string;
 }
 
 export interface Estatisticas {
@@ -182,8 +200,21 @@ class ApiService {
     return this.request<Alerta>(`/coacessi/alertas/${alertaId}`);
   }
 
-  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
-    return this.request(`/coacessi/alertas/${alertaId}`, "PUT", resolucao);
+  /** Auto-atribuição ("assumir alerta"): o profissional responsável é sempre o usuário autenticado, nunca informado pelo cliente. */
+  async atribuirAlerta(alertaId: string): Promise<{ message: string; profissional: Profissional }> {
+    return this.request(`/coacessi/alertas/${alertaId}/atribuir`, "PATCH");
+  }
+
+  async atualizarStatusAlerta(alertaId: string, status: StatusAlerta): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}/status`, "PATCH", { status });
+  }
+
+  async atualizarPrioridadeAlerta(alertaId: string, prioridade: PrioridadeAlerta): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}/prioridade`, "PATCH", { prioridade });
+  }
+
+  async registrarIntervencao(alertaId: string, descricao: string): Promise<{ message: string; intervencao: Intervencao }> {
+    return this.request(`/coacessi/alertas/${alertaId}/intervencoes`, "POST", { descricao });
   }
 
   async getEstatisticas(): Promise<Estatisticas> {
