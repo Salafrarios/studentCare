@@ -274,7 +274,7 @@ class ApiService {
  * - Mock (padrão em dev): dados fictícios para testar todas as páginas
  * - Real: conecta ao backend FastAPI
  *
- * Para desativar o mock, crie um arquivo .env.local com:
+ * Para ativar o backend FastAPI, crie um arquivo .env.local com:
  *   NEXT_PUBLIC_USE_MOCK=false
  *
  * Credenciais de teste (com mock):
