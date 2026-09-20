@@ -232,6 +232,11 @@ class ApiService {
     return this.request(`/coacessi/alertas/${alertaId}/resolver`, "PUT", resolucao);
   }
 
+  /** Registra o acesso a dados sensíveis do aluno (condição, contato de emergência) para fins de auditoria. */
+  async registrarAcessoSensivel(alertaId: string, motivo: string): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}/acesso-sensivel`, "POST", { motivo });
+  }
+
   async getEstatisticas(): Promise<Estatisticas> {
     return this.request<Estatisticas>("/coacessi/estatisticas");
   }

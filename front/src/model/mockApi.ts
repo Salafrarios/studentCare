@@ -455,6 +455,18 @@ class MockApiService {
     return { message: "Alerta resolvido com sucesso!" };
   }
 
+  async registrarAcessoSensivel(alertaId: string, motivo: string): Promise<{ message: string }> {
+    await delay(300);
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    const profissional = this.usuarioAtual?.nome || "Usuário não identificado";
+    console.log(
+      `%c🔒 Acesso a dados sensíveis registrado — alerta ${alertaId} por ${profissional}: "${motivo}"`,
+      "color: #B45309; font-weight: bold;"
+    );
+    return { message: "Acesso registrado." };
+  }
+
   async getEstatisticas(): Promise<Estatisticas> {
     await delay(300);
     const resolvidos = alertasMock.filter((a) => a.status === "resolvido").length;

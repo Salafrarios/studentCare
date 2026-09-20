@@ -32,6 +32,9 @@ export default function CoacessiDashboard() {
   const [filtroPrioridade, setFiltroPrioridade] = useState<"todas" | PrioridadeAlerta>("todas");
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<Ordenacao>("recentes");
+  const [dadosSensiveisRevelados, setDadosSensiveisRevelados] = useState(false);
+  const [motivoAcesso, setMotivoAcesso] = useState("");
+  const [revelandoDados, setRevelandoDados] = useState(false);
 
   const carregarDados = useCallback(async () => {
     try {
@@ -99,6 +102,22 @@ export default function CoacessiDashboard() {
       });
     } finally {
       setAssumindo(false);
+    }
+  };
+
+  const handleRevelarDadosSensiveis = async () => {
+    if (!selectedAlerta || !motivoAcesso.trim()) return;
+    setRevelandoDados(true);
+    try {
+      await apiService.registrarAcessoSensivel(selectedAlerta.id, motivoAcesso.trim());
+      setDadosSensiveisRevelados(true);
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        msg: err instanceof Error ? err.message : "Erro ao registrar o acesso.",
+      });
+    } finally {
+      setRevelandoDados(false);
     }
   };
 
@@ -345,6 +364,8 @@ export default function CoacessiDashboard() {
                     );
                     setResultado("confirmado");
                     setDescricaoIntervencao("");
+                    setDadosSensiveisRevelados(false);
+                    setMotivoAcesso("");
                   }}
                   className={`w-full text-left bg-white rounded-xl border border-gray-100 border-l-4 ${config.border} p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
                 >
@@ -527,15 +548,41 @@ export default function CoacessiDashboard() {
                 <div className="bg-emerald-50 rounded-lg p-4 space-y-1 text-sm">
                   <p className="font-semibold text-emerald-800 mb-1">Informações e Preferências do Aluno</p>
                   <p><strong>Nome:</strong> {selectedAlerta.aluno_info.nome}</p>
-                  <p><strong>Condição:</strong> {selectedAlerta.aluno_info.condicao}</p>
                   {selectedAlerta.aluno_info.comunicacao_preferida && (
                     <p><strong>Comunicação preferida:</strong> {selectedAlerta.aluno_info.comunicacao_preferida}</p>
                   )}
                   {selectedAlerta.aluno_info.diretrizes_apoio && (
                     <p><strong>Diretrizes de apoio autorizadas:</strong> {selectedAlerta.aluno_info.diretrizes_apoio}</p>
                   )}
-                  {selectedAlerta.aluno_info.contato_emergencia && (
-                    <p><strong>Contato de emergência:</strong> {selectedAlerta.aluno_info.contato_emergencia}</p>
+
+                  {dadosSensiveisRevelados ? (
+                    <>
+                      <p><strong>Condição:</strong> {selectedAlerta.aluno_info.condicao}</p>
+                      {selectedAlerta.aluno_info.contato_emergencia && (
+                        <p><strong>Contato de emergência:</strong> {selectedAlerta.aluno_info.contato_emergencia}</p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="pt-2 mt-2 border-t border-emerald-100 space-y-2">
+                      <p className="text-xs text-emerald-700">
+                        Condição e contato de emergência são dados sensíveis — informe o motivo do acesso para revelá-los. Esta ação fica registrada.
+                      </p>
+                      <input
+                        type="text"
+                        value={motivoAcesso}
+                        onChange={(e) => setMotivoAcesso(e.target.value)}
+                        placeholder="Motivo do acesso (ex.: contato com a família necessário)"
+                        className="w-full px-3 py-2 rounded-lg border border-emerald-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-xs bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRevelarDadosSensiveis}
+                        disabled={!motivoAcesso.trim() || revelandoDados}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:bg-emerald-300 text-white transition-colors cursor-pointer"
+                      >
+                        {revelandoDados ? "Registrando acesso..." : "Revelar dados sensíveis"}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
