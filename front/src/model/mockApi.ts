@@ -1,0 +1,616 @@
+/**
+ * StudentCare - Mock API Service
+ * Simula o backend FastAPI para testes do frontend.
+ *
+ * Usuários de teste:
+ *   aluno@teste.com     / 123456  → Dashboard do Aluno
+ *   professor@teste.com / 123456  → Dashboard do Professor
+ *   coacessi@teste.com  / 123456  → Dashboard da COACESSI
+ */
+
+import {
+  LoginResponse,
+  PerfilAluno,
+  CadastroNeurodivergente,
+  ChamadoAuxilio,
+  Alerta,
+  StatusAlerta,
+  PrioridadeAlerta,
+  Profissional,
+  Intervencao,
+  ResolucaoAlerta,
+  Estatisticas,
+  Notificacao,
+  Sala,
+  NovaSala,
+  FonteDeteccao,
+  IniciarDeteccaoRequest,
+  StatusDeteccao,
+} from "./api";
+
+/** Simula latência de rede */
+const delay = (ms: number = 600) => new Promise((r) => setTimeout(r, ms));
+
+/** Banco de dados em memória */
+let cadastroAluno: CadastroNeurodivergente | null = null;
+
+const salasMock: Sala[] = [
+  {
+    id: "sala-101",
+    nome: "Sala 101",
+    bloco: "Bloco A - Térreo",
+    capacidade: 45,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-101",
+    status: "ativo",
+    descricao: "Equipada com câmera PTZ de alta resolução e microfone direcional.",
+  },
+  {
+    id: "sala-102",
+    nome: "Sala 102",
+    bloco: "Bloco A - 1º Andar",
+    capacidade: 50,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-102",
+    status: "ativo",
+    descricao: "Sala de aula padrão para turmas de ciclo básico.",
+  },
+  {
+    id: "sala-103",
+    nome: "Sala 103",
+    bloco: "Bloco A - 1º Andar",
+    capacidade: 40,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-103",
+    status: "ativo",
+    descricao: "Sala com isolamento acústico.",
+  },
+  {
+    id: "sala-201",
+    nome: "Sala 201",
+    bloco: "Bloco B - 2º Andar",
+    capacidade: 60,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-201",
+    status: "manutencao",
+    descricao: "Câmera em calibração pelo setor de TI.",
+  },
+  {
+    id: "sala-202",
+    nome: "Sala 202",
+    bloco: "Bloco B - 2º Andar",
+    capacidade: 55,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-202",
+    status: "ativo",
+    descricao: "Sala ampla com ventilação natural.",
+  },
+  {
+    id: "lab-info-1",
+    nome: "Lab. Informática 1",
+    bloco: "Prédio de Tecnologia - 2º Andar",
+    capacidade: 35,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/lab-info-1",
+    status: "ativo",
+    descricao: "Laboratório com 35 estações de trabalho e câmera de ângulo aberto.",
+  },
+  {
+    id: "lab-info-2",
+    nome: "Lab. Informática 2",
+    bloco: "Prédio de Tecnologia - 2º Andar",
+    capacidade: 35,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/lab-info-2",
+    status: "ativo",
+    descricao: "Laboratório voltado a disciplinas de computação gráfica.",
+  },
+  {
+    id: "auditorio",
+    nome: "Auditório Central",
+    bloco: "Centro de Convenções",
+    capacidade: 220,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/auditorio",
+    status: "ativo",
+    descricao: "Auditório principal com duas câmeras interconectadas.",
+  },
+];
+
+const profissionalCarla: Profissional = { id: "usr-003", nome: "Carla Rodrigues" };
+
+const alertasMock: Alerta[] = [
+  {
+    id: "alerta-001",
+    timestamp: new Date(Date.now() - 5 * 60000).toISOString(),
+    sala: "Sala 101",
+    indicador_comportamental: "Agitação motora intensa",
+    status: "novo",
+    prioridade: "alta",
+    confianca: 0.92,
+    historico_intervencoes: [],
+    aluno_info: {
+      nome: "Maria Silva",
+      condicao: "TEA",
+      comunicacao_preferida: "Mensagem de texto, evitar contato visual prolongado",
+      diretrizes_apoio: "Oferecer ambiente com menos estímulos sensoriais antes de iniciar qualquer conversa.",
+      contato_emergencia: "(81) 99999-1234",
+    },
+    snapshot_url: undefined,
+  },
+  {
+    id: "alerta-002",
+    timestamp: new Date(Date.now() - 18 * 60000).toISOString(),
+    sala: "Lab. Informática 1",
+    indicador_comportamental: "Tentativa recorrente de deixar o ambiente",
+    status: "suporte_em_progresso",
+    prioridade: "media",
+    confianca: 0.78,
+    profissional_atribuido: profissionalCarla,
+    historico_intervencoes: [
+      {
+        id: "interv-001",
+        timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
+        profissional: profissionalCarla,
+        descricao: "Contato inicial realizado; aluno encaminhado para sala de apoio.",
+      },
+    ],
+    aluno_info: {
+      nome: "João Oliveira",
+      condicao: "Ansiedade Generalizada",
+      comunicacao_preferida: "Conversa em voz baixa, sem urgência aparente",
+      diretrizes_apoio: "Reduzir ruído ao redor e permitir pausas breves durante o atendimento.",
+      contato_emergencia: "(81) 98888-5678",
+    },
+  },
+  {
+    id: "alerta-003",
+    timestamp: new Date(Date.now() - 25 * 60000).toISOString(),
+    sala: "Sala 103",
+    tipo_crise: "Meltdown",
+    indicador_comportamental: "Meltdown",
+    status: "em_andamento",
+    prioridade: "alta",
+    confianca: 0.88,
+    historico_intervencoes: [],
+    aluno_info: {
+      nome: "Pedro Santos",
+      condicao: "TEA",
+      contato_emergencia: "(81) 98765-4321",
+    },
+  },
+  {
+    id: "alerta-004",
+    timestamp: new Date(Date.now() - 45 * 60000).toISOString(),
+    sala: "Sala 202",
+    indicador_comportamental: "Movimentos repetitivos persistentes",
+    status: "em_analise",
+    prioridade: "media",
+    confianca: 0.85,
+    historico_intervencoes: [],
+  },
+  {
+    id: "alerta-005",
+    timestamp: new Date(Date.now() - 120 * 60000).toISOString(),
+    sala: "Auditório",
+    indicador_comportamental: "Mudança abrupta no padrão de movimento",
+    status: "resolvido",
+    prioridade: "baixa",
+    confianca: 0.68,
+    profissional_atribuido: profissionalCarla,
+    historico_intervencoes: [
+      {
+        id: "interv-002",
+        timestamp: new Date(Date.now() - 100 * 60000).toISOString(),
+        profissional: profissionalCarla,
+        descricao: "Aluno avaliado presencialmente; situação contornada com pausa breve.",
+      },
+    ],
+  },
+  {
+    id: "alerta-006",
+    timestamp: new Date(Date.now() - 150 * 60000).toISOString(),
+    sala: "Sala 102",
+    indicador_comportamental: "Padrão de movimento sem indicação clara",
+    status: "descartado",
+    prioridade: "baixa",
+    confianca: 0.41,
+    historico_intervencoes: [
+      {
+        id: "interv-003",
+        timestamp: new Date(Date.now() - 148 * 60000).toISOString(),
+        profissional: profissionalCarla,
+        descricao: "Verificado por câmera; sem necessidade de intervenção. Provável falso positivo.",
+      },
+    ],
+  },
+];
+
+const notificacoesMock: Notificacao[] = [
+  {
+    id: "notif-001",
+    mensagem: "Novo alerta detectado na Sala 101 — possível meltdown",
+    tipo: "alerta",
+    timestamp: new Date(Date.now() - 5 * 60000).toISOString(),
+    lida: false,
+  },
+  {
+    id: "notif-002",
+    mensagem: "Crise de ansiedade detectada no Lab. Informática 1",
+    tipo: "alerta",
+    timestamp: new Date(Date.now() - 18 * 60000).toISOString(),
+    lida: false,
+  },
+  {
+    id: "notif-003",
+    mensagem: "Chamado de auxílio enviado com sucesso para a Sala 103",
+    tipo: "sucesso",
+    timestamp: new Date(Date.now() - 60 * 60000).toISOString(),
+    lida: true,
+  },
+];
+
+/** Mock do serviço de API */
+class MockApiService {
+  private token: string | null = null;
+  /** Usuário autenticado no mock — usado para inferir o profissional em ações da COACESSI, nunca recebido do cliente. */
+  private usuarioAtual: LoginResponse["user"] | null = null;
+
+  getToken(): string | null {
+    return this.token;
+  }
+
+  setToken(token: string): void {
+    this.token = token;
+  }
+
+  clearToken(): void {
+    this.token = null;
+    this.usuarioAtual = null;
+  }
+
+  // ==================== AUTH ====================
+
+  async login(email: string, senha: string): Promise<LoginResponse> {
+    await delay(800);
+
+    const usuarios: Record<string, LoginResponse> = {
+      "aluno@teste.com": {
+        token: "mock-token-aluno-xyz",
+        user: { id: "usr-001", nome: "Wilian de Lima Santos", email: "aluno@teste.com", role: "aluno" },
+      },
+      "professor@teste.com": {
+        token: "mock-token-professor-xyz",
+        user: { id: "usr-002", nome: "Prof. João da Silva", email: "professor@teste.com", role: "professor" },
+      },
+      "coacessi@teste.com": {
+        token: "mock-token-coacessi-xyz",
+        user: { id: "usr-003", nome: "Carla Rodrigues", email: "coacessi@teste.com", role: "coacessi" },
+      },
+      "admin@teste.com": {
+        token: "mock-token-admin-xyz",
+        user: { id: "usr-004", nome: "Carlos Eduardo (TI)", email: "admin@teste.com", role: "admin" },
+      },
+    };
+
+    const found = usuarios[email.toLowerCase()];
+
+    if (!found || senha !== "123456") {
+      throw new Error("E-mail ou senha inválidos. Use os e-mails de teste (veja console).");
+    }
+
+    console.log(
+      `%c✅ Login mock: ${found.user.nome} (${found.user.role})`,
+      "color: #2D6A4F; font-weight: bold; font-size: 14px;"
+    );
+
+    this.setToken(found.token);
+    this.usuarioAtual = found.user;
+    return found;
+  }
+
+  // ==================== ALUNO ====================
+
+  async getPerfilAluno(): Promise<PerfilAluno> {
+    await delay();
+    return {
+      id: "usr-001",
+      nome: "Wilian de Lima Santos",
+      email: "aluno@teste.com",
+      cadastro_neurodivergente: cadastroAluno || undefined,
+      data_cadastro: cadastroAluno ? new Date().toISOString() : undefined,
+    };
+  }
+
+  async cadastrarNeurodivergente(dados: CadastroNeurodivergente): Promise<{ message: string }> {
+    await delay(1000);
+    cadastroAluno = { ...dados };
+    console.log("%c📋 Cadastro neurodivergente salvo:", "color: #2D6A4F; font-weight: bold;", dados);
+    return { message: "Cadastro realizado com sucesso!" };
+  }
+
+  // ==================== PROFESSOR ====================
+
+  async getCameraStream(salaId: string): Promise<{ stream_url: string }> {
+    await delay(1200);
+    // Retorna uma URL placeholder — em produção será o stream real
+    console.log(`%c📹 Stream solicitado: ${salaId}`, "color: #40916C; font-weight: bold;");
+    return { stream_url: "" }; // Vazio para mostrar o placeholder de "câmera indisponível"
+  }
+
+  async chamarAuxilio(dados: ChamadoAuxilio): Promise<{ message: string; chamado_id: string }> {
+    await delay(1000);
+    const chamadoId = `chamado-${Date.now()}`;
+    const novoAlerta: Alerta = {
+      id: `alerta-${Date.now().toString().slice(-4)}`,
+      timestamp: new Date().toISOString(),
+      sala: dados.sala,
+      tipo_crise: dados.tipo || "Crise não especificada",
+      indicador_comportamental: dados.tipo || "Crise não especificada",
+      status: "novo",
+      prioridade: "alta",
+      confianca: 1.0,
+      historico_intervencoes: [],
+    };
+    alertasMock.unshift(novoAlerta);
+    notificacoesMock.unshift({
+      id: `notif-${Date.now()}`,
+      mensagem: `Novo chamado de auxílio requisitado: ${dados.tipo || "Ocorrência"} na ${dados.sala}`,
+      tipo: "alerta",
+      timestamp: new Date().toISOString(),
+      lida: false,
+    });
+    console.log(
+      `%c🚨 CHAMADO DE AUXÍLIO ENVIADO!`,
+      "color: #E63946; font-weight: bold; font-size: 16px;",
+      "\n", dados, "\nID:", chamadoId
+    );
+    return { message: "Chamado enviado com sucesso!", chamado_id: chamadoId };
+  }
+
+  // ==================== COACESSI ====================
+
+  async getAlertas(): Promise<Alerta[]> {
+    await delay(400);
+    return [...alertasMock];
+  }
+
+  async getAlertaDetalhes(alertaId: string): Promise<Alerta> {
+    await delay();
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    return { ...alerta };
+  }
+
+  async atribuirAlerta(alertaId: string): Promise<{ message: string; profissional: Profissional }> {
+    await delay(500);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const profissional: Profissional = this.usuarioAtual
+      ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+      : profissionalCarla;
+    alertasMock[idx].profissional_atribuido = profissional;
+    return { message: "Alerta assumido com sucesso!", profissional };
+  }
+
+  async iniciarAtendimento(alertaId: string): Promise<{ message: string }> {
+    await delay(500);
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    alerta.status = "em_andamento";
+    if (!alerta.profissional_atribuido) {
+      alerta.profissional_atribuido = this.usuarioAtual
+        ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+        : profissionalCarla;
+    }
+    console.log(
+      `%c⏳ Atendimento do alerta ${alertaId} iniciado (status: em_andamento)`,
+      "color: #1D4ED8; font-weight: bold;"
+    );
+    return { message: "Atendimento iniciado com sucesso!" };
+  }
+
+  async atualizarStatusAlerta(alertaId: string, status: StatusAlerta): Promise<{ message: string }> {
+    await delay(400);
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    alerta.status = status;
+    console.log(`%c🔄 Alerta ${alertaId} → status "${status}"`, "color: #2D6A4F; font-weight: bold;");
+    return { message: "Status atualizado com sucesso!" };
+  }
+
+  async atualizarPrioridadeAlerta(alertaId: string, prioridade: PrioridadeAlerta): Promise<{ message: string }> {
+    await delay(400);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    alertasMock[idx].prioridade = prioridade;
+    return { message: "Prioridade atualizada com sucesso!" };
+  }
+
+  async registrarIntervencao(alertaId: string, descricao: string): Promise<{ message: string; intervencao: Intervencao }> {
+    await delay(500);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const profissional: Profissional = this.usuarioAtual
+      ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+      : profissionalCarla;
+    const intervencao: Intervencao = {
+      id: `interv-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      profissional,
+      descricao,
+    };
+    alertasMock[idx].historico_intervencoes = [...alertasMock[idx].historico_intervencoes, intervencao];
+    console.log("%c📝 Intervenção registrada:", "color: #2D6A4F; font-weight: bold;", intervencao);
+    return { message: "Intervenção registrada com sucesso!", intervencao };
+  }
+
+  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
+    await delay(600);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const novoStatus: StatusAlerta = resolucao.resultado === "falso_alarme" ? "descartado" : "resolvido";
+    alertasMock[idx].status = novoStatus;
+    if (resolucao.observacao && resolucao.observacao.trim()) {
+      const profissional: Profissional = this.usuarioAtual
+        ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+        : profissionalCarla;
+      const intervencao: Intervencao = {
+        id: `interv-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        profissional,
+        descricao: resolucao.observacao.trim(),
+      };
+      alertasMock[idx].historico_intervencoes = [...alertasMock[idx].historico_intervencoes, intervencao];
+    }
+    return { message: "Alerta resolvido com sucesso!" };
+  }
+
+  async registrarAcessoSensivel(alertaId: string, motivo: string): Promise<{ message: string }> {
+    await delay(300);
+    const alerta = alertasMock.find((a) => a.id === alertaId);
+    if (!alerta) throw new Error("Alerta não encontrado");
+    const profissional = this.usuarioAtual?.nome || "Usuário não identificado";
+    console.log(
+      `%c🔒 Acesso a dados sensíveis registrado — alerta ${alertaId} por ${profissional}: "${motivo}"`,
+      "color: #B45309; font-weight: bold;"
+    );
+    return { message: "Acesso registrado." };
+  }
+
+  async getEstatisticas(): Promise<Estatisticas> {
+    await delay(300);
+    const resolvidos = alertasMock.filter((a) => a.status === "resolvido").length;
+    const descartados = alertasMock.filter((a) => a.status === "descartado").length;
+    return {
+      total_alertas_hoje: alertasMock.length,
+      crises_confirmadas: Math.max(1, resolvidos),
+      falsos_alarmes: Math.max(1, descartados),
+      em_analise: alertasMock.filter((a) => a.status === "em_analise").length,
+      em_andamento: alertasMock.filter((a) => a.status === "em_andamento" || a.status === "suporte_em_progresso").length,
+    };
+  }
+
+  // ==================== NOTIFICAÇÕES ====================
+
+  async getNotificacoes(): Promise<Notificacao[]> {
+    await delay(300);
+    return [...notificacoesMock];
+  }
+
+  async marcarNotificacaoLida(id: string): Promise<{ message: string }> {
+    await delay(200);
+    const notif = notificacoesMock.find((n) => n.id === id);
+    if (notif) notif.lida = true;
+    return { message: "Notificação marcada como lida" };
+  }
+
+  // ==================== ADMIN TI - GESTÃO DE SALAS ====================
+
+  async getSalas(): Promise<Sala[]> {
+    await delay(300);
+    return [...salasMock];
+  }
+
+  async cadastrarSala(dados: NovaSala): Promise<{ message: string; sala: Sala }> {
+    await delay(700);
+    const novaSala: Sala = {
+      id: `sala-${Date.now().toString().slice(-4)}`,
+      nome: dados.nome,
+      bloco: dados.bloco,
+      capacidade: dados.capacidade || 30,
+      camera_url: dados.camera_url || `rtsp://camera.universidade.edu.br/stream/${dados.nome.toLowerCase().replace(/\s+/g, "-")}`,
+      status: dados.status || "ativo",
+      descricao: dados.descricao,
+    };
+
+    salasMock.unshift(novaSala);
+    console.log("%c🏢 Nova sala cadastrada:", "color: #2D6A4F; font-weight: bold;", novaSala);
+    return { message: "Sala cadastrada com sucesso!", sala: novaSala };
+  }
+
+  async atualizarSala(id: string, dados: Partial<NovaSala>): Promise<{ message: string; sala: Sala }> {
+    await delay(500);
+    const index = salasMock.findIndex((s) => s.id === id);
+    if (index === -1) {
+      throw new Error("Sala não encontrada");
+    }
+    salasMock[index] = { ...salasMock[index], ...dados };
+    return { message: "Sala atualizada com sucesso!", sala: salasMock[index] };
+  }
+
+  async removerSala(id: string): Promise<{ message: string }> {
+    await delay(400);
+    const index = salasMock.findIndex((s) => s.id === id);
+    if (index === -1) {
+      throw new Error("Sala não encontrada");
+    }
+    const removida = salasMock.splice(index, 1)[0];
+    console.log("%c🗑️ Sala removida:", "color: #E63946; font-weight: bold;", removida);
+    return { message: "Sala removida com sucesso!" };
+  }
+
+  // ==================== DETECÇÃO (mock) ====================
+  // Canal global (webcam/arquivo) é compartilhado por todas as salas;
+  // canal por câmera IP é independente por sala. Dados fictícios, sem IA real.
+
+  private deteccaoGlobal: { rodando: boolean; fonte: FonteDeteccao | null } = { rodando: false, fonte: null };
+  private deteccaoPorSala: Record<string, boolean> = {};
+
+  private gerarEsqueletoMock(): [number, number][] {
+    return Array.from({ length: 25 }, () => [
+      0.3 + Math.random() * 0.4,
+      0.2 + Math.random() * 0.6,
+    ]);
+  }
+
+  async iniciarDeteccao(dados: IniciarDeteccaoRequest): Promise<{ message: string }> {
+    await delay(500);
+    if (dados.fonte === "camera_ip") {
+      const sala = salasMock.find((s) => s.id === dados.sala_id);
+      if (!sala?.camera_url) throw new Error("Sala sem câmera IP cadastrada.");
+      this.deteccaoPorSala[dados.sala_id] = true;
+    } else {
+      if (dados.fonte === "arquivo" && !dados.caminho_arquivo) {
+        throw new Error("Informe o caminho do arquivo .mp4.");
+      }
+      this.deteccaoGlobal = { rodando: true, fonte: dados.fonte };
+    }
+    console.log("%c▶️ Detecção iniciada (mock):", "color: #2D6A4F; font-weight: bold;", dados);
+    return { message: "Detecção iniciada (mock)." };
+  }
+
+  async pararDeteccao(salaId?: string): Promise<{ message: string }> {
+    await delay(300);
+    if (salaId && this.deteccaoPorSala[salaId]) {
+      this.deteccaoPorSala[salaId] = false;
+    } else {
+      this.deteccaoGlobal = { rodando: false, fonte: null };
+    }
+    return { message: "Detecção parada (mock)." };
+  }
+
+  async getStatusDeteccao(salaId: string): Promise<StatusDeteccao> {
+    await delay(200);
+    const rodandoPorSala = !!this.deteccaoPorSala[salaId];
+    const rodando = rodandoPorSala || this.deteccaoGlobal.rodando;
+    if (!rodando) {
+      return {
+        rodando: false,
+        sala_id: null,
+        fonte: null,
+        buffer_frames: 0,
+        acao_prevista: null,
+        confianca: null,
+        esqueleto: null,
+        gatilho_automatico_ativo: false,
+        erro: null,
+      };
+    }
+    return {
+      rodando: true,
+      sala_id: salaId,
+      fonte: rodandoPorSala ? "camera_ip" : this.deteccaoGlobal.fonte,
+      buffer_frames: Math.floor(Math.random() * 180),
+      acao_prevista: "Comportamento típico",
+      confianca: 0.7 + Math.random() * 0.25,
+      esqueleto: this.gerarEsqueletoMock(),
+      gatilho_automatico_ativo: true,
+      erro: null,
+    };
+  }
+}
+
+export const mockApiService = new MockApiService();

@@ -1,0 +1,37 @@
+services:
+  back:
+    build: ./back
+    ports:
+      - "8000:8000"
+    environment:
+      STUDENTCARE_JWT_SECRET: troque-esta-chave-em-producao
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - back_data:/app/data
+    # Acesso à webcam do host (Linux). Comente esta linha se a máquina não
+    # tiver câmera, ou ajuste o índice para /dev/video1 etc. Não funciona no
+    # Docker Desktop (Mac/Windows), que não expõe /dev/videoN ao container.
+    devices:
+      - /dev/video0:/dev/video0
+    networks:
+      - studentcare
+
+  front:
+    build:
+      context: ./front
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api
+        NEXT_PUBLIC_USE_MOCK: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - back
+    networks:
+      - studentcare
+
+networks:
+  studentcare:
+    driver: bridge
+
+volumes:
+  back_data:
