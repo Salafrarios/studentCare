@@ -286,8 +286,7 @@ The technology stack may be adjusted according to team expertise, available deve
 
 ### 8.4. Database
 
-- PostgreSQL;
-- SQLite for local prototyping;
+- DuckDB
 - Redis, if real-time event management is required.
 
 ### 8.5. Infrastructure and Development
