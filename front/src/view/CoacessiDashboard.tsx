@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/control/AuthContext";
 import { apiService, Alerta, Estatisticas, StatusAlerta, PrioridadeAlerta } from "@/model/api";
 import { useNotifications } from "@/control/useNotifications";
+
+type Ordenacao = "recentes" | "prioridade" | "confianca";
+
+const PESO_PRIORIDADE: Record<PrioridadeAlerta, number> = { alta: 3, media: 2, baixa: 1 };
 
 export default function CoacessiDashboard() {
   const { user } = useAuth();
@@ -25,6 +29,9 @@ export default function CoacessiDashboard() {
   const [iniciandoAtendimento, setIniciandoAtendimento] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "novo" | "em_analise" | "em_andamento" | "resolvido">("todos");
+  const [filtroPrioridade, setFiltroPrioridade] = useState<"todas" | PrioridadeAlerta>("todas");
+  const [busca, setBusca] = useState("");
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>("recentes");
 
   const carregarDados = useCallback(async () => {
     try {
@@ -159,16 +166,34 @@ export default function CoacessiDashboard() {
     { label: "Em Andamento", value: stats.em_andamento, color: "text-blue-700", bg: "bg-blue-50" },
   ];
 
-  const alertasFiltrados = alertas.filter((a) => {
-    if (filtroStatus === "todos") return true;
-    if (filtroStatus === "em_andamento") {
-      return a.status === "em_andamento" || a.status === "suporte_em_progresso";
-    }
-    if (filtroStatus === "resolvido") {
-      return a.status === "resolvido" || a.status === "descartado";
-    }
-    return a.status === filtroStatus;
-  });
+  const alertasFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    const filtrados = alertas.filter((a) => {
+      if (filtroStatus === "em_andamento") {
+        if (a.status !== "em_andamento" && a.status !== "suporte_em_progresso") return false;
+      } else if (filtroStatus === "resolvido") {
+        if (a.status !== "resolvido" && a.status !== "descartado") return false;
+      } else if (filtroStatus !== "todos" && a.status !== filtroStatus) {
+        return false;
+      }
+
+      if (filtroPrioridade !== "todas" && a.prioridade !== filtroPrioridade) return false;
+
+      if (!termo) return true;
+      const titulo = (a.indicador_comportamental || a.tipo_crise || "").toLowerCase();
+      return (
+        titulo.includes(termo) ||
+        a.sala.toLowerCase().includes(termo) ||
+        a.aluno_info?.nome.toLowerCase().includes(termo)
+      );
+    });
+
+    return [...filtrados].sort((a, b) => {
+      if (ordenacao === "prioridade") return PESO_PRIORIDADE[b.prioridade] - PESO_PRIORIDADE[a.prioridade];
+      if (ordenacao === "confianca") return b.confianca - a.confianca;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+  }, [alertas, filtroStatus, filtroPrioridade, busca, ordenacao]);
 
   return (
     <div className="space-y-6">
@@ -246,6 +271,50 @@ export default function CoacessiDashboard() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+          <div className="relative flex-1">
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por aluno, sala ou indicador..."
+              aria-label="Buscar alertas"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {(["todas", "alta", "media", "baixa"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setFiltroPrioridade(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
+                  filtroPrioridade === p
+                    ? "bg-gray-900 text-white shadow-xs"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {p === "todas" ? "Toda prioridade" : p}
+              </button>
+            ))}
+          </div>
+
+          <select
+            value={ordenacao}
+            onChange={(e) => setOrdenacao(e.target.value as Ordenacao)}
+            aria-label="Ordenar alertas"
+            className="shrink-0 px-3 py-2 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm bg-white text-gray-700"
+          >
+            <option value="recentes">Mais recentes</option>
+            <option value="prioridade">Maior prioridade</option>
+            <option value="confianca">Maior confiança</option>
+          </select>
         </div>
 
         {alertasFiltrados.length === 0 ? (
