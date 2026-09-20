@@ -1,0 +1,4 @@
+.env
+models/*.pt
+models/*.onnx
+models/*.safetensors

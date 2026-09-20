@@ -1,0 +1,29 @@
+services:
+  api-cv:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api_cv
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_PATH: ${MODEL_PATH:-}
+    networks:
+      - rede_hackathon
+    volumes:
+      - ./app:/workspace/app
+      - ./models:/workspace/models:ro
+    restart: unless-stopped
+    # Remova este bloco se estiver executando sem uma GPU NVIDIA.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  rede_hackathon:
+    name: rede_hackathon
+    driver: bridge
