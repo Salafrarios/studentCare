@@ -256,11 +256,45 @@ Responsibilities:
 
 ---
 
-## 8. Proposed Technology Stack
+## 8. Technology Stack
 
-The technology stack may be adjusted according to team expertise, available development time, and competition requirements.
+The stack below was originally proposed before implementation began. This section now reflects what has actually been built for the Accessibility Coordination Dashboard (Module 6), and what remains proposed for the modules that have not been implemented yet.
 
-### 8.1. Computer Vision and Artificial Intelligence
+### 8.1. Implemented — Accessibility Coordination Dashboard (Module 6)
+
+**Frontend**
+
+- Next.js 16 (App Router);
+- React 19;
+- TypeScript;
+- Tailwind CSS v4;
+- ESLint.
+
+**Backend**
+
+- Python 3;
+- FastAPI;
+- Pydantic v2;
+- Uvicorn (ASGI server);
+- PyJWT for JSON Web Token authentication;
+- PBKDF2-HMAC-SHA256 password hashing (Python's `hashlib`, no external auth library).
+
+**Database**
+
+- SQLite, via Python's built-in `sqlite3` module (no ORM).
+
+**API style**
+
+- REST API with Bearer token authorization and role-based route guards;
+- Polling from the frontend for alerts and notifications (no real-time channel yet).
+
+**Development**
+
+- Git and GitHub, with one feature branch and pull request per feature.
+
+### 8.2. Proposed — Future Modules (not yet implemented)
+
+**Computer Vision and Artificial Intelligence**
 
 - Python;
 - OpenCV;
@@ -269,35 +303,15 @@ The technology stack may be adjusted according to team expertise, available deve
 - NumPy;
 - PyTorch or TensorFlow, if custom model training is required.
 
-### 8.2. Backend
+**Real-time and Infrastructure**
 
-- Python;
-- FastAPI;
-- Pydantic;
-- WebSocket or another real-time communication mechanism;
-- REST API for module integration.
+- WebSocket or another real-time communication mechanism, to replace polling for live alerts;
+- Docker, for containerized deployment;
+- Redis, if real-time event management at scale becomes necessary.
 
-### 8.3. Frontend
+DuckDB was originally proposed for the database layer; SQLite was adopted instead for the initial implementation, prioritizing simplicity for the MVP.
 
-
-- React or another web framework for the administrative dashboard;
-- Typescript;
-- Responsive interfaces for accessibility professionals.
-
-### 8.4. Database
-
-- DuckDB
-- Redis, if real-time event management is required.
-
-### 8.5. Infrastructure and Development
-
-- Docker;
-- Git and GitHub;
-- Local development environment;
-- Application server;
-- Environment variable and secret management.
-
-The final technology selection should prioritize simplicity, reliability, and the ability to demonstrate a functional prototype during the hackathon.
+The final technology selection should continue to prioritize simplicity, reliability, and the ability to demonstrate a functional prototype during the hackathon.
 
 ---
 
