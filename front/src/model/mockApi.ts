@@ -18,6 +18,7 @@ import {
   PrioridadeAlerta,
   Profissional,
   Intervencao,
+  ResolucaoAlerta,
   Estatisticas,
   Notificacao,
   Sala,
@@ -156,8 +157,11 @@ const alertasMock: Alerta[] = [
     timestamp: new Date(Date.now() - 25 * 60000).toISOString(),
     sala: "Sala 103",
     tipo_crise: "Meltdown",
+    indicador_comportamental: "Meltdown",
     status: "em_andamento",
+    prioridade: "alta",
     confianca: 0.88,
+    historico_intervencoes: [],
     aluno_info: {
       nome: "Pedro Santos",
       condicao: "TEA",
@@ -193,7 +197,7 @@ const alertasMock: Alerta[] = [
     ],
   },
   {
-    id: "alerta-005",
+    id: "alerta-006",
     timestamp: new Date(Date.now() - 150 * 60000).toISOString(),
     sala: "Sala 102",
     indicador_comportamental: "Padrão de movimento sem indicação clara",
@@ -331,8 +335,11 @@ class MockApiService {
       timestamp: new Date().toISOString(),
       sala: dados.sala,
       tipo_crise: dados.tipo || "Crise não especificada",
+      indicador_comportamental: dados.tipo || "Crise não especificada",
       status: "novo",
+      prioridade: "alta",
       confianca: 1.0,
+      historico_intervencoes: [],
     };
     alertasMock.unshift(novoAlerta);
     notificacoesMock.unshift({
@@ -364,11 +371,27 @@ class MockApiService {
     return { ...alerta };
   }
 
+  async atribuirAlerta(alertaId: string): Promise<{ message: string; profissional: Profissional }> {
+    await delay(500);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const profissional: Profissional = this.usuarioAtual
+      ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+      : profissionalCarla;
+    alertasMock[idx].profissional_atribuido = profissional;
+    return { message: "Alerta assumido com sucesso!", profissional };
+  }
+
   async iniciarAtendimento(alertaId: string): Promise<{ message: string }> {
     await delay(500);
     const alerta = alertasMock.find((a) => a.id === alertaId);
     if (!alerta) throw new Error("Alerta não encontrado");
     alerta.status = "em_andamento";
+    if (!alerta.profissional_atribuido) {
+      alerta.profissional_atribuido = this.usuarioAtual
+        ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+        : profissionalCarla;
+    }
     console.log(
       `%c⏳ Atendimento do alerta ${alertaId} iniciado (status: em_andamento)`,
       "color: #1D4ED8; font-weight: bold;"
@@ -376,28 +399,11 @@ class MockApiService {
     return { message: "Atendimento iniciado com sucesso!" };
   }
 
-  async atualizarStatusAlerta(alertaId: string, status: Alerta["status"]): Promise<{ message: string }> {
+  async atualizarStatusAlerta(alertaId: string, status: StatusAlerta): Promise<{ message: string }> {
     await delay(400);
     const alerta = alertasMock.find((a) => a.id === alertaId);
     if (!alerta) throw new Error("Alerta não encontrado");
     alerta.status = status;
-    return { message: "Status atualizado com sucesso!" };
-  }
-
-  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
-    await delay(800);
-    const idx = alertasMock.findIndex((a) => a.id === alertaId);
-    if (idx === -1) throw new Error("Alerta não encontrado");
-    const profissional: Profissional = { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome };
-    alertasMock[idx].profissional_atribuido = profissional;
-    return { message: "Alerta assumido com sucesso!", profissional };
-  }
-
-  async atualizarStatusAlerta(alertaId: string, status: StatusAlerta): Promise<{ message: string }> {
-    await delay(600);
-    const idx = alertasMock.findIndex((a) => a.id === alertaId);
-    if (idx === -1) throw new Error("Alerta não encontrado");
-    alertasMock[idx].status = status;
     console.log(`%c🔄 Alerta ${alertaId} → status "${status}"`, "color: #2D6A4F; font-weight: bold;");
     return { message: "Status atualizado com sucesso!" };
   }
@@ -411,14 +417,16 @@ class MockApiService {
   }
 
   async registrarIntervencao(alertaId: string, descricao: string): Promise<{ message: string; intervencao: Intervencao }> {
-    await delay(700);
-    if (!this.usuarioAtual) throw new Error("Usuário não autenticado.");
+    await delay(500);
     const idx = alertasMock.findIndex((a) => a.id === alertaId);
     if (idx === -1) throw new Error("Alerta não encontrado");
+    const profissional: Profissional = this.usuarioAtual
+      ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+      : profissionalCarla;
     const intervencao: Intervencao = {
       id: `interv-${Date.now()}`,
       timestamp: new Date().toISOString(),
-      profissional: { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome },
+      profissional,
       descricao,
     };
     alertasMock[idx].historico_intervencoes = [...alertasMock[idx].historico_intervencoes, intervencao];
@@ -426,14 +434,37 @@ class MockApiService {
     return { message: "Intervenção registrada com sucesso!", intervencao };
   }
 
+  async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
+    await delay(600);
+    const idx = alertasMock.findIndex((a) => a.id === alertaId);
+    if (idx === -1) throw new Error("Alerta não encontrado");
+    const novoStatus: StatusAlerta = resolucao.resultado === "falso_alarme" ? "descartado" : "resolvido";
+    alertasMock[idx].status = novoStatus;
+    if (resolucao.observacao && resolucao.observacao.trim()) {
+      const profissional: Profissional = this.usuarioAtual
+        ? { id: this.usuarioAtual.id, nome: this.usuarioAtual.nome }
+        : profissionalCarla;
+      const intervencao: Intervencao = {
+        id: `interv-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        profissional,
+        descricao: resolucao.observacao.trim(),
+      };
+      alertasMock[idx].historico_intervencoes = [...alertasMock[idx].historico_intervencoes, intervencao];
+    }
+    return { message: "Alerta resolvido com sucesso!" };
+  }
+
   async getEstatisticas(): Promise<Estatisticas> {
     await delay(300);
+    const resolvidos = alertasMock.filter((a) => a.status === "resolvido").length;
+    const descartados = alertasMock.filter((a) => a.status === "descartado").length;
     return {
       total_alertas_hoje: alertasMock.length,
       crises_confirmadas: Math.max(1, resolvidos),
-      falsos_alarmes: 1,
+      falsos_alarmes: Math.max(1, descartados),
       em_analise: alertasMock.filter((a) => a.status === "em_analise").length,
-      em_andamento: alertasMock.filter((a) => a.status === "em_andamento").length,
+      em_andamento: alertasMock.filter((a) => a.status === "em_andamento" || a.status === "suporte_em_progresso").length,
     };
   }
 
