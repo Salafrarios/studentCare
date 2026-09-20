@@ -279,10 +279,9 @@ The technology stack may be adjusted according to team expertise, available deve
 
 ### 8.3. Frontend
 
-Possible alternatives:
 
-- Flutter for cross-platform applications;
 - React or another web framework for the administrative dashboard;
+- Typescript;
 - Responsive interfaces for accessibility professionals.
 
 ### 8.4. Database
