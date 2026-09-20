@@ -8,11 +8,17 @@ services:
       CORS_ORIGINS: http://localhost:3000
     volumes:
       - back_data:/app/data
-    # Acesso à webcam do host (Linux). Comente esta linha se a máquina não
-    # tiver câmera, ou ajuste o índice para /dev/video1 etc. Não funciona no
-    # Docker Desktop (Mac/Windows), que não expõe /dev/videoN ao container.
+    # Acesso à webcam do host (Linux). Muitas câmeras expõem mais de um
+    # /dev/videoN (um é o feed de imagem de verdade, outro é metadado) —
+    # por isso passamos várias; escolha o índice certo pelo campo "Índice
+    # da câmera" no Painel do Professor. Remova as linhas se a máquina não
+    # tiver câmera. Não funciona no Docker Desktop (Mac/Windows), que não
+    # expõe /dev/videoN ao container.
     devices:
       - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
     networks:
       - studentcare
 

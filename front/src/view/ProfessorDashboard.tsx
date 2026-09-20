@@ -47,6 +47,7 @@ export default function ProfessorDashboard() {
 
   // Detecção de ações
   const [fonteDeteccao, setFonteDeteccao] = useState<FonteDeteccao>("webcam");
+  const [indiceCamera, setIndiceCamera] = useState(0);
   const [caminhoArquivo, setCaminhoArquivo] = useState("");
   const [statusDeteccao, setStatusDeteccao] = useState<StatusDeteccao | null>(null);
   const [deteccaoLoading, setDeteccaoLoading] = useState(false);
@@ -148,6 +149,7 @@ export default function ProfessorDashboard() {
     setDeteccaoErro(null);
     try {
       const dados: IniciarDeteccaoRequest = { sala_id: salaId, fonte: fonteDeteccao };
+      if (fonteDeteccao === "webcam") dados.indice_camera = indiceCamera;
       if (fonteDeteccao === "arquivo") dados.caminho_arquivo = caminhoArquivo;
       await apiService.iniciarDeteccao(dados);
       setStatusDeteccao(await apiService.getStatusDeteccao(salaId));
@@ -244,6 +246,25 @@ export default function ProfessorDashboard() {
             ))}
           </select>
         </div>
+
+        {fonteDeteccao === "webcam" && (
+          <div>
+            <label htmlFor="indice-camera" className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Índice da câmera
+            </label>
+            <input
+              id="indice-camera"
+              type="number"
+              min={0}
+              value={indiceCamera}
+              onChange={(e) => setIndiceCamera(Math.max(0, Number(e.target.value)))}
+              className="w-24 px-4 py-3 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-sm"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Se a câmera errada aparecer (ou nada aparecer), tente outro número (0, 1, 2...).
+            </p>
+          </div>
+        )}
 
         {fonteDeteccao === "arquivo" && (
           <div className="flex-1 min-w-[240px]">
