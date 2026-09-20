@@ -3,6 +3,8 @@
  * Comunicação com backend FastAPI
  */
 
+import { mockApiService } from "./mockApi";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 export interface UserData {
@@ -43,7 +45,7 @@ export interface Alerta {
   timestamp: string;
   sala: string;
   tipo_crise: string;
-  status: "novo" | "em_analise" | "resolvido";
+  status: "novo" | "em_analise" | "em_andamento" | "resolvido";
   confianca: number;
   aluno_info?: {
     nome: string;
@@ -63,6 +65,7 @@ export interface Estatisticas {
   falsos_alarmes: number;
   crises_confirmadas: number;
   em_analise: number;
+  em_andamento: number;
 }
 
 export interface Notificacao {
@@ -182,6 +185,14 @@ class ApiService {
     return this.request<Alerta>(`/coacessi/alertas/${alertaId}`);
   }
 
+  async iniciarAtendimento(alertaId: string): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}/iniciar`, "PUT");
+  }
+
+  async atualizarStatusAlerta(alertaId: string, status: Alerta["status"]): Promise<{ message: string }> {
+    return this.request(`/coacessi/alertas/${alertaId}/status`, "PATCH", { status });
+  }
+
   async resolverAlerta(alertaId: string, resolucao: ResolucaoAlerta): Promise<{ message: string }> {
     return this.request(`/coacessi/alertas/${alertaId}`, "PUT", resolucao);
   }
@@ -231,10 +242,8 @@ class ApiService {
  *   professor@teste.com / 123456
  *   coacessi@teste.com  / 123456
  */
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const useMock = process.env.NEXT_PUBLIC_USE_MOCK !== "false";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
 export const apiService: ApiService = useMock
-  ? (require("./mockApi").mockApiService as ApiService)
+  ? (mockApiService as unknown as ApiService)
   : new ApiService();
