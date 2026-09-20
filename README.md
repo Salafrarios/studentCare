@@ -338,3 +338,53 @@ The final technology selection should prioritize simplicity, reliability, and th
           |
           v
 [Support and Event Recording]
+```
+
+---
+
+## 10. Running the Project
+
+Two services: `back/` (FastAPI + SQLite + the local skeleton-detection model) and `front/` (Next.js dashboard). Processing is 100% local — no video ever leaves the machine, only skeleton coordinates.
+
+### 10.1. Docker Compose (recommended — single machine, e.g. the classroom PC with the webcam)
+
+Prerequisite: Docker. Nothing else — the trained checkpoint and the MediaPipe pose model are committed to the repo so the build doesn't depend on internet access.
+
+```bash
+git clone <repo-url>
+cd studentCare
+docker compose up --build
+```
+
+- Front: http://localhost:3000
+- Back: http://localhost:8000 (interactive docs at `/docs`)
+- The back container gets `/dev/video0` passed through (see `docker-compose.yml`) so it can use the host's webcam. Comment out the `devices:` line if the machine has no camera, or on Windows/Mac (Docker Desktop doesn't expose `/dev/videoN`).
+- Data persists in the `back_data` Docker volume (SQLite file), so it survives `docker compose restart`. Run `docker compose down -v` to wipe it and start fresh with the seed demo users.
+
+### 10.2. Docker Swarm
+
+```bash
+./deploy-swarm.sh
+```
+
+Builds both images, initializes a swarm if needed, and runs `docker stack deploy -c docker-stack.yml studentcare`. Same URLs as above. **Limitation**: Swarm services don't support device passthrough (`devices:`), so a live webcam is not reachable in Swarm mode — use `docker compose` for that, or use the `camera_ip` / `arquivo` (.mp4) detection sources in Swarm (see 10.4).
+
+### 10.3. What each container does
+
+- **back**: FastAPI REST API, SQLite database, JWT auth, room/alert management, and the skeleton-based action-detection pipeline (OpenCV + MediaPipe Pose + a GRU trained on MMASD+). See `back/README.md` for the full endpoint list and the model's real limitations (it is not a crisis/diagnostic detector — read that before demoing it as one).
+- **front**: Next.js dashboard with per-role views (aluno, professor, coacessi, admin). Talks to the back over REST; falls back to mock data if `NEXT_PUBLIC_USE_MOCK` isn't explicitly `false`.
+
+### 10.4. Testing it end to end
+
+Demo users (password `123456` for all): `aluno@teste.com`, `professor@teste.com`, `coacessi@teste.com`, `admin@teste.com`.
+
+1. Open http://localhost:3000, log in as `professor@teste.com`.
+2. Pick a room, then pick a detection source:
+   - **Webcam** — uses the server's physical camera. This is a single shared channel: while it's running, *every* room shows this same feed/prediction (there's only one physical webcam).
+   - **Vídeo de teste (.mp4)** — give an absolute path to a video file already on the server's disk (not an upload). Also a single shared channel like the webcam.
+   - **Câmera IP** — uses the room's own `camera_url` (set it first in Admin → Salas). Each room with an IP camera runs its own independent detection channel, in parallel with the others.
+3. Watch the skeleton overlay, predicted action, and confidence update (polling every ~1.5s) — never the raw video.
+4. Log in as `admin@teste.com` to register rooms and their `camera_url`.
+5. Log in as `coacessi@teste.com` to see incoming alerts and manage them.
+
+Raw API check (no browser): `curl http://localhost:8000/health` should return `{"status":"ok"}`. Full endpoint reference: `back/README.md`.

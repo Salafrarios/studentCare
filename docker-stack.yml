@@ -1,0 +1,46 @@
+version: "3.9"
+
+# Stack para `docker stack deploy` (Docker Swarm). Diferente do
+# docker-compose.yml, o Swarm não suporta `devices:` em serviços — não há
+# como garantir em qual nó do cluster o container roda, então não dá para
+# prometer acesso a uma webcam específica. Aqui a detecção só funciona via
+# arquivo .mp4 (fonte "arquivo" na API). Para webcam ao vivo, use
+# `docker compose up` na própria máquina com a câmera.
+#
+# As imagens abaixo precisam existir localmente (ou num registry) antes do
+# deploy — o Swarm não builda a partir de Dockerfile. Use deploy-swarm.sh.
+
+services:
+  back:
+    image: studentcare-back:latest
+    ports:
+      - "8000:8000"
+    environment:
+      STUDENTCARE_JWT_SECRET: troque-esta-chave-em-producao
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - back_data:/app/data
+    networks:
+      - studentcare
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  front:
+    image: studentcare-front:latest
+    ports:
+      - "3000:3000"
+    networks:
+      - studentcare
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  studentcare:
+    driver: overlay
+
+volumes:
+  back_data:

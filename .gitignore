@@ -1,1 +1,7 @@
-studentCare/
+# Específico de cada serviço: ver back/.gitignore e front/.gitignore.
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
