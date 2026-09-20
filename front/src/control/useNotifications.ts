@@ -24,7 +24,7 @@ export function useNotifications() {
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchNotificacoes();
-    const interval = setInterval(fetchNotificacoes, 30000);
+    const interval = setInterval(fetchNotificacoes, 10000);
     return () => clearInterval(interval);
   }, [isAuthenticated, fetchNotificacoes]);
 

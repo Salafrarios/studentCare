@@ -38,8 +38,11 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  // Atualiza a lista a cada 10s, sem precisar recarregar a página.
   useEffect(() => {
     carregarSalas();
+    const intervalId = setInterval(carregarSalas, 10000);
+    return () => clearInterval(intervalId);
   }, [carregarSalas]);
 
   const handleSubmit = async (e: FormEvent) => {

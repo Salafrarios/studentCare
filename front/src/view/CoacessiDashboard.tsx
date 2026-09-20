@@ -51,7 +51,7 @@ export default function CoacessiDashboard() {
 
   useEffect(() => {
     carregarDados();
-    const interval = setInterval(carregarDados, 15000);
+    const interval = setInterval(carregarDados, 10000);
     return () => clearInterval(interval);
   }, [carregarDados]);
 

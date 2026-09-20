@@ -55,7 +55,8 @@ export default function ProfessorDashboard() {
 
   const salaSelecionada = salasCompletas.find((s) => s.id === salaId) || null;
 
-  // Carrega salas cadastradas da API (cadastradas pelo admin de TI)
+  // Carrega salas cadastradas da API (cadastradas pelo admin de TI) e
+  // atualiza a cada 10s, sem precisar recarregar a página.
   useEffect(() => {
     const carregarSalas = async () => {
       try {
@@ -76,6 +77,8 @@ export default function ProfessorDashboard() {
       }
     };
     carregarSalas();
+    const intervalId = setInterval(carregarSalas, 10000);
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
