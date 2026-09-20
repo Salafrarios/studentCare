@@ -6,26 +6,40 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import cv2
 import numpy as np
 
 from .deteccao import (
     GATILHO_AUTOMATICO_ATIVO,
+    GATILHO_COOLDOWN_SEGUNDOS,
     ExtratorPose,
     ModeloAcoes,
     avaliar_gatilho_automatico,
 )
+
+# (sala_id, acao, confianca) -> None. Chamado na thread de captura quando o
+# gatilho automático dispara; quem instancia o ServicoCaptura decide o que
+# fazer (ex.: criar um alerta no banco) para não acoplar este módulo ao
+# banco de dados.
+CallbackGatilho = Callable[[str, str, float], None]
 
 TAMANHO_JANELA = 179
 FPS_ALVO = 20
 
 
 class ServicoCaptura:
-    def __init__(self, caminho_checkpoint: str, caminho_pose_task: str) -> None:
+    def __init__(
+        self,
+        caminho_checkpoint: str,
+        caminho_pose_task: str,
+        ao_disparar_gatilho: Optional[CallbackGatilho] = None,
+    ) -> None:
         self._caminho_checkpoint = caminho_checkpoint
         self._caminho_pose_task = caminho_pose_task
+        self._ao_disparar_gatilho = ao_disparar_gatilho
+        self._ultimo_gatilho_ts = 0.0
         self._modelo: Optional[ModeloAcoes] = None
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
@@ -55,7 +69,9 @@ class ServicoCaptura:
                 rodando=True, sala_id=sala_id, fonte=fonte, buffer_frames=0,
                 acao_prevista=None, confianca=None, esqueleto=None, erro=None,
             )
-        self._thread = threading.Thread(target=self._loop, args=(fonte, indice_camera, caminho_arquivo), daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, args=(sala_id, fonte, indice_camera, caminho_arquivo), daemon=True
+        )
         self._thread.start()
 
     def parar(self) -> None:
@@ -65,7 +81,7 @@ class ServicoCaptura:
         with self._lock:
             self._estado["rodando"] = False
 
-    def _loop(self, fonte: str, indice_camera: int, caminho_arquivo: Optional[str]) -> None:
+    def _loop(self, sala_id: str, fonte: str, indice_camera: int, caminho_arquivo: Optional[str]) -> None:
         try:
             if self._modelo is None:
                 self._modelo = ModeloAcoes(self._caminho_checkpoint)
@@ -110,8 +126,19 @@ class ServicoCaptura:
                     resultado = self._modelo.prever(np.stack(buffer))
                     atualizacao["acao_prevista"] = resultado["acao"]
                     atualizacao["confianca"] = resultado["confianca"]
-                    if GATILHO_AUTOMATICO_ATIVO and avaliar_gatilho_automatico(buffer):
-                        atualizacao["gatilho_disparado_em"] = time.time()  # placeholder nunca dispara
+                    if GATILHO_AUTOMATICO_ATIVO and avaliar_gatilho_automatico(resultado):
+                        agora_gatilho = time.time()
+                        # cooldown: evita um alerta novo a cada frame enquanto a
+                        # confiança continuar alta (o modelo prevê a cada frame
+                        # depois que o buffer enche pela primeira vez).
+                        if agora_gatilho - self._ultimo_gatilho_ts >= GATILHO_COOLDOWN_SEGUNDOS:
+                            self._ultimo_gatilho_ts = agora_gatilho
+                            atualizacao["gatilho_disparado_em"] = agora_gatilho
+                            if self._ao_disparar_gatilho is not None:
+                                try:
+                                    self._ao_disparar_gatilho(sala_id, resultado["acao"], resultado["confianca"])
+                                except Exception:
+                                    pass  # não deve derrubar a thread de captura
 
                 with self._lock:
                     self._estado.update(atualizacao)

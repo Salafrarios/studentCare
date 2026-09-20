@@ -69,11 +69,36 @@ _CANAL_GLOBAL = "global"
 _canais_deteccao: Dict[str, ServicoCaptura] = {}
 
 
+def _criar_alerta_automatico(sala_id: str, acao: str, confianca: float) -> None:
+    """Callback do gatilho automático (opt-in via GATILHO_AUTOMATICO_ATIVO=true,
+    decisão explícita do usuário — ver aviso em control/deteccao.py). O
+    tipo_crise registra a ação e a confiança REAIS, sem inventar um rótulo de
+    crise, para deixar claro pro COACESSI que isto é uma postura de terapia
+    detectada com confiança acima do limiar, não um diagnóstico."""
+    tipo = f"Ação detectada automaticamente: {acao} ({confianca:.0%} de confiança)"
+    with get_connection() as connection:
+        room = connection.execute("SELECT nome FROM rooms WHERE id = ?", (sala_id,)).fetchone()
+        connection.execute(
+            """
+            INSERT INTO alerts (id, timestamp, sala_id, tipo_crise, status, confianca)
+            VALUES (?, ?, ?, ?, 'novo', ?)
+            """,
+            (f"alerta-auto-{uuid.uuid4().hex[:12]}", utc_now(), sala_id, tipo, confianca),
+        )
+        add_notification(
+            connection,
+            f"Alerta automático (não é diagnóstico de crise): {tipo} em {room['nome'] if room else sala_id}",
+            NotificationType.alerta,
+            None,
+        )
+
+
 def _canal_deteccao(nome: str) -> ServicoCaptura:
     if nome not in _canais_deteccao:
         _canais_deteccao[nome] = ServicoCaptura(
             caminho_checkpoint=_CHECKPOINT_DETECCAO,
             caminho_pose_task=_POSE_TASK_DETECCAO,
+            ao_disparar_gatilho=_criar_alerta_automatico,
         )
     return _canais_deteccao[nome]
 

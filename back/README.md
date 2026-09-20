@@ -149,9 +149,17 @@ modelo (sem câmera): `python src/control/testar.py`.
 - O **botão manual do professor** (`/api/professor/chamar-auxilio`) é o
   mecanismo principal de alerta e não depende deste módulo.
 - O gatilho automático (`GATILHO_AUTOMATICO_ATIVO`) vem **desligado por
-  padrão** e o placeholder em `src/control/deteccao.py::avaliar_gatilho_automatico`
-  nunca dispara sozinho — não foi implementada (nem deve ser inventada a
-  partir das 11 classes de terapia) uma lógica de detecção de agitação.
+  padrão**. Se ligado (`=true`), ele dispara um alerta sozinho — sem o
+  professor clicar em nada — sempre que a confiança de **qualquer uma das
+  11 posturas de terapia** passar de `GATILHO_CONFIANCA_MINIMA` (padrão
+  `0.7`), respeitando um `GATILHO_COOLDOWN_SEGUNDOS` (padrão `60`) pra não
+  criar um alerta a cada frame. **Isso não é detecção de crise**: o alerta
+  gerado registra a ação e a confiança reais (ex.: "Ação detectada
+  automaticamente: Arm_Swing (84% de confiança)") — vai disparar toda vez
+  que alguém fizer um desses exercícios, não só numa crise real. Ligar isso
+  foi uma decisão explícita de quem está rodando este deploy, ciente da
+  limitação (ver `src/control/deteccao.py::avaliar_gatilho_automatico`); o
+  **botão manual do professor continua sendo o mecanismo mais confiável**.
 - A reamostragem de vídeo para ~20fps usa passo fixo (vizinho mais próximo),
   não interpolação.
 - Verificado neste projeto: carregamento do checkpoint e inferência (CPU) com

@@ -133,19 +133,27 @@ class ModeloAcoes:
 
 
 # ==========================================================================
-# Gatilho automático — DESLIGADO por padrão.
+# Gatilho automático — DESLIGADO por padrão (GATILHO_AUTOMATICO_ATIVO=true
+# para ligar). Foi ativado sob decisão explícita do usuário, CIENTE da
+# limitação abaixo — não é uma recomendação de produto.
 # ==========================================================================
 GATILHO_AUTOMATICO_ATIVO = os.getenv("GATILHO_AUTOMATICO_ATIVO", "false").strip().lower() == "true"
+GATILHO_CONFIANCA_MINIMA = float(os.getenv("GATILHO_CONFIANCA_MINIMA", "0.7"))
+GATILHO_COOLDOWN_SEGUNDOS = float(os.getenv("GATILHO_COOLDOWN_SEGUNDOS", "60"))
 
 
-def avaliar_gatilho_automatico(historico_predicoes) -> bool:
-    """Placeholder proposital: NUNCA dispara.
+def avaliar_gatilho_automatico(resultado: Dict[str, object]) -> bool:
+    """Decide se a última previsão deve disparar um alerta automático.
 
-    O modelo classifica 11 posturas de terapia do MMASD+, não agitação/crise.
-    Não implemente aqui uma heurística usando essas 11 classes — não foi
-    validada para esse fim e, num contexto de saúde, um falso positivo ou
-    negativo tem custo real. Substitua este corpo por uma lógica real
-    (outro sinal/modelo, validado) antes de ativar GATILHO_AUTOMATICO_ATIVO=true.
-    O mecanismo principal de alerta continua sendo o botão manual do professor.
+    ATENÇÃO (leia antes de mexer): o modelo classifica 11 POSTURAS DE TERAPIA
+    do MMASD+ (Arm_Swing, Drumming, Squat_Pose, etc.), NÃO agitação/crise.
+    "Confiança alta" aqui significa só "tenho certeza que é essa postura" —
+    isto vai disparar um alerta toda vez que alguém fizer um desses
+    exercícios acima do limiar, não só em crises reais. O alerta gerado
+    (ver main.py::_criar_alerta_automatico) registra a ação e a confiança
+    reais, sem inventar um rótulo de "crise", para não mascarar a origem. O
+    botão manual do professor continua sendo o mecanismo de alerta mais
+    confiável — isto é um complemento opt-in, não substitui aquele.
     """
-    return False
+    confianca = resultado.get("confianca")
+    return isinstance(confianca, (int, float)) and confianca >= GATILHO_CONFIANCA_MINIMA

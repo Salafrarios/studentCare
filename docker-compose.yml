@@ -6,6 +6,14 @@ services:
     environment:
       STUDENTCARE_JWT_SECRET: troque-esta-chave-em-producao
       CORS_ORIGINS: http://localhost:3000
+      # Gatilho automático: LIGADO por decisão explícita do usuário deste
+      # deploy. O modelo classifica posturas de terapia, não crise — isto
+      # dispara um alerta sempre que a confiança de QUALQUER uma das 11
+      # posturas passar de GATILHO_CONFIANCA_MINIMA, não só em crises reais.
+      # Ver aviso completo em back/src/control/deteccao.py.
+      GATILHO_AUTOMATICO_ATIVO: "true"
+      GATILHO_CONFIANCA_MINIMA: "0.7"
+      GATILHO_COOLDOWN_SEGUNDOS: "60"
     volumes:
       - back_data:/app/data
     # Acesso à webcam do host (Linux). Muitas câmeras expõem mais de um
