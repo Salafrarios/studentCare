@@ -1,0 +1,94 @@
+{
+ "acc_teste": 0.6968503937007874,
+ "macro_f1_teste": 0.6817864531473125,
+ "criancas_treino": 21,
+ "criancas_teste": 7,
+ "por_classe": {
+  "Arm_Swing": {
+   "precision": 0.5909090909090909,
+   "recall": 0.65,
+   "f1-score": 0.6190476190476191,
+   "support": 40.0
+  },
+  "Body_pose": {
+   "precision": 0.8888888888888888,
+   "recall": 0.5194805194805194,
+   "f1-score": 0.6557377049180327,
+   "support": 77.0
+  },
+  "chest_expansion": {
+   "precision": 0.6428571428571429,
+   "recall": 0.7627118644067796,
+   "f1-score": 0.6976744186046512,
+   "support": 59.0
+  },
+  "Frog_Pose": {
+   "precision": 0.967741935483871,
+   "recall": 0.631578947368421,
+   "f1-score": 0.7643312101910829,
+   "support": 95.0
+  },
+  "Drumming": {
+   "precision": 0.8390804597701149,
+   "recall": 0.7087378640776699,
+   "f1-score": 0.7684210526315789,
+   "support": 103.0
+  },
+  "Marcas_Forward": {
+   "precision": 0.4744525547445255,
+   "recall": 0.8783783783783784,
+   "f1-score": 0.6161137440758294,
+   "support": 74.0
+  },
+  "Marcas_Shaking": {
+   "precision": 0.7014925373134329,
+   "recall": 0.6103896103896104,
+   "f1-score": 0.6527777777777778,
+   "support": 77.0
+  },
+  "Sing_Clap": {
+   "precision": 0.4605263157894737,
+   "recall": 0.875,
+   "f1-score": 0.603448275862069,
+   "support": 40.0
+  },
+  "Squat_Pose": {
+   "precision": 0.8888888888888888,
+   "recall": 0.36363636363636365,
+   "f1-score": 0.5161290322580645,
+   "support": 44.0
+  },
+  "Tree_Pose": {
+   "precision": 0.9,
+   "recall": 0.7297297297297297,
+   "f1-score": 0.8059701492537313,
+   "support": 74.0
+  },
+  "Twist_Pose": {
+   "precision": 0.7291666666666666,
+   "recall": 0.8860759493670886,
+   "f1-score": 0.8,
+   "support": 79.0
+  },
+  "accuracy": 0.6968503937007874,
+  "macro avg": {
+   "precision": 0.7349094983010996,
+   "recall": 0.6923381115304147,
+   "f1-score": 0.6817864531473125,
+   "support": 762.0
+  },
+  "weighted avg": {
+   "precision": 0.7601455322444292,
+   "recall": 0.6968503937007874,
+   "f1-score": 0.7004213091556262,
+   "support": 762.0
+  }
+ },
+ "media_5_divisoes": {
+  "acc": 0.707,
+  "acc_desvio": 0.034,
+  "macro_f1": 0.626,
+  "macro_f1_desvio": 0.094
+ },
+ "aviso": "Classifica 11 acoes de terapia (MMASD+), criancas. NAO detecta crise. Teste com 7 criancas."
+}

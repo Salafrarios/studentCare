@@ -21,7 +21,15 @@ class AlertStatus(str, Enum):
     novo = "novo"
     em_analise = "em_analise"
     em_andamento = "em_andamento"
+    suporte_em_progresso = "suporte_em_progresso"
     resolvido = "resolvido"
+    descartado = "descartado"
+
+
+class PrioridadeAlerta(str, Enum):
+    baixa = "baixa"
+    media = "media"
+    alta = "alta"
 
 
 class NotificationType(str, Enum):
@@ -62,6 +70,18 @@ class AlertStatusUpdate(BaseModel):
     status: AlertStatus
 
 
+class PriorityUpdate(BaseModel):
+    prioridade: PrioridadeAlerta
+
+
+class IntervencaoCreate(BaseModel):
+    descricao: str = Field(min_length=1)
+
+
+class AcessoSensivelRequest(BaseModel):
+    motivo: str = Field(min_length=1)
+
+
 class RoomCreate(BaseModel):
     nome: str = Field(min_length=1)
     bloco: Optional[str] = None
@@ -78,3 +98,16 @@ class RoomUpdate(BaseModel):
     camera_url: Optional[str] = None
     status: Optional[RoomStatus] = None
     descricao: Optional[str] = None
+
+
+class FonteDeteccao(str, Enum):
+    webcam = "webcam"
+    arquivo = "arquivo"
+    camera_ip = "camera_ip"
+
+
+class IniciarDeteccaoRequest(BaseModel):
+    sala_id: str = Field(min_length=1)
+    fonte: FonteDeteccao = FonteDeteccao.webcam
+    indice_camera: int = Field(default=0, ge=0)
+    caminho_arquivo: Optional[str] = None

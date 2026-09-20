@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 .env
 data/*.db
+
+# gru_mmasd.pt (checkpoint treinado) e pose_landmarker_lite.task (modelo de
+# pose do MediaPipe) FICAM versionados de propósito: o build Docker de "clone
+# e rode" não pode depender de rede para baixá-los (e nem sempre há acesso à
+# internet — como se viu ao testar o build aqui).

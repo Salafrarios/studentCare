@@ -2,21 +2,28 @@ import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path as FilePath
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Path, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .control.captura import ServicoCaptura
 from .database import get_connection, init_database
 from .schemas import (
+    AcessoSensivelRequest,
     AlertResolution,
     AlertStatus,
     AlertStatusUpdate,
     AssistanceRequest,
+    FonteDeteccao,
+    IniciarDeteccaoRequest,
+    IntervencaoCreate,
     LoginRequest,
     NeurodivergentRegistration,
     NotificationType,
+    PriorityUpdate,
     ResolutionResult,
     Role,
     RoomCreate,
@@ -48,6 +55,27 @@ app.add_middleware(
 )
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+_CONTROL_DIR = FilePath(__file__).resolve().parent / "control"
+_MODEL_DIR = FilePath(__file__).resolve().parent / "model"
+_CHECKPOINT_DETECCAO = os.getenv("DETECCAO_CHECKPOINT", str(_CONTROL_DIR / "gru_mmasd.pt"))
+_POSE_TASK_DETECCAO = os.getenv("DETECCAO_POSE_TASK", str(_MODEL_DIR / "pose_landmarker_lite.task"))
+
+# Canais de detecção: "global" é compartilhado por todas as salas (webcam ou
+# vídeo de teste — só existe uma câmera/vídeo físico no servidor, então toda
+# sala vê a mesma coisa). Uma câmera IP é um canal independente por sala
+# (chave = sala_id), porque cada sala tem sua própria URL de câmera.
+_CANAL_GLOBAL = "global"
+_canais_deteccao: Dict[str, ServicoCaptura] = {}
+
+
+def _canal_deteccao(nome: str) -> ServicoCaptura:
+    if nome not in _canais_deteccao:
+        _canais_deteccao[nome] = ServicoCaptura(
+            caminho_checkpoint=_CHECKPOINT_DETECCAO,
+            caminho_pose_task=_POSE_TASK_DETECCAO,
+        )
+    return _canais_deteccao[nome]
 
 
 @app.on_event("startup")
@@ -153,23 +181,73 @@ def fetch_alert(connection: sqlite3.Connection, alert_id: str) -> sqlite3.Row:
     return row
 
 
-def alert_response(row: sqlite3.Row) -> Dict[str, Any]:
+_ACESSO_RESTRITO = "Acesso restrito — registre o motivo para visualizar"
+
+
+def _has_sensitive_access(connection: sqlite3.Connection, alert_id: str) -> bool:
+    # Qualquer coacessi que já tenha justificado o acesso libera a visualização
+    # para todos (auditoria é por alerta, não por usuário) — LGPD exige o
+    # registro do motivo, não uma trava individual por profissional.
+    return (
+        connection.execute(
+            "SELECT 1 FROM acessos_sensiveis WHERE alerta_id = ? LIMIT 1",
+            (alert_id,),
+        ).fetchone()
+        is not None
+    )
+
+
+def alert_response(connection: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "id": row["id"],
         "timestamp": row["timestamp"],
         "sala": row["sala_nome"] or row["sala_id"] or "Sala não informada",
         "tipo_crise": row["tipo_crise"],
         "status": row["status"],
+        "prioridade": row["prioridade"] or "media",
         "confianca": row["confianca"],
     }
+
+    if row["profissional_atribuido_id"]:
+        professional = connection.execute(
+            "SELECT id, nome FROM users WHERE id = ?",
+            (row["profissional_atribuido_id"],),
+        ).fetchone()
+        if professional is not None:
+            result["profissional_atribuido"] = {
+                "id": professional["id"],
+                "nome": professional["nome"],
+            }
+
     if row["aluno_nome"]:
+        liberado = _has_sensitive_access(connection, row["id"])
         result["aluno_info"] = {
             "nome": row["aluno_nome"],
-            "condicao": row["aluno_condicao"] or "Não informado",
-            "contato_emergencia": row["contato_emergencia"] or "Não informado",
+            "condicao": (row["aluno_condicao"] or "Não informado") if liberado else _ACESSO_RESTRITO,
+            "contato_emergencia": (row["contato_emergencia"] or "Não informado") if liberado else _ACESSO_RESTRITO,
         }
     if row["snapshot_url"]:
         result["snapshot_url"] = row["snapshot_url"]
+
+    intervencoes = connection.execute(
+        """
+        SELECT i.id, i.timestamp, i.descricao, u.id AS prof_id, u.nome AS prof_nome
+        FROM intervencoes i
+        LEFT JOIN users u ON u.id = i.profissional_id
+        WHERE i.alerta_id = ?
+        ORDER BY datetime(i.timestamp) ASC
+        """,
+        (row["id"],),
+    ).fetchall()
+    result["historico_intervencoes"] = [
+        {
+            "id": intervencao["id"],
+            "timestamp": intervencao["timestamp"],
+            "profissional": {"id": intervencao["prof_id"], "nome": intervencao["prof_nome"]},
+            "descricao": intervencao["descricao"],
+        }
+        for intervencao in intervencoes
+    ]
     return result
 
 
@@ -339,6 +417,88 @@ def request_assistance(
     return {"message": "Chamado enviado com sucesso!", "chamado_id": request_id}
 
 
+# ==================== Detecção (esqueleto + GRU) ====================
+#
+# Processamento 100% local: só coordenadas de esqueleto entram e saem daqui,
+# nunca vídeo. O botão manual do professor (/api/professor/chamar-auxilio)
+# continua sendo o mecanismo PRINCIPAL de alerta. Esta detecção classifica 11
+# posturas de terapia do MMASD+ (ver metricas.json) — NÃO é diagnóstico de
+# crise/agitação, e o gatilho automático fica desligado por padrão
+# (GATILHO_AUTOMATICO_ATIVO=false), com placeholder que nunca dispara sozinho
+# em src/control/deteccao.py::avaliar_gatilho_automatico.
+
+
+@app.post("/api/deteccao/iniciar", tags=["deteccao"])
+def iniciar_deteccao(
+    payload: IniciarDeteccaoRequest,
+    user: Dict[str, Any] = Depends(require_roles(Role.professor, Role.admin)),
+) -> Dict[str, str]:
+    del user
+    if payload.fonte == FonteDeteccao.arquivo and not payload.caminho_arquivo:
+        raise HTTPException(status_code=400, detail="Informe caminho_arquivo para fonte 'arquivo'.")
+
+    if payload.fonte == FonteDeteccao.camera_ip:
+        with get_connection() as connection:
+            room = get_room_or_404(connection, payload.sala_id)
+        if not room["camera_url"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Esta sala não tem camera_url cadastrada. Configure em Admin > Salas.",
+            )
+        canal_id = payload.sala_id
+        fonte_interna = FonteDeteccao.arquivo.value  # cv2.VideoCapture lê URL de stream igual a arquivo local
+        caminho_arquivo = room["camera_url"]
+    else:
+        canal_id = _CANAL_GLOBAL
+        fonte_interna = payload.fonte.value
+        caminho_arquivo = payload.caminho_arquivo
+
+    try:
+        _canal_deteccao(canal_id).iniciar(
+            sala_id=payload.sala_id,
+            fonte=fonte_interna,
+            indice_camera=payload.indice_camera,
+            caminho_arquivo=caminho_arquivo,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"message": "Detecção iniciada."}
+
+
+@app.post("/api/deteccao/parar", tags=["deteccao"])
+def parar_deteccao(
+    sala_id: Optional[str] = Query(default=None),
+    user: Dict[str, Any] = Depends(require_roles(Role.professor, Role.admin)),
+) -> Dict[str, str]:
+    del user
+    canal_id = sala_id if sala_id in _canais_deteccao else _CANAL_GLOBAL
+    if canal_id in _canais_deteccao:
+        _canais_deteccao[canal_id].parar()
+    return {"message": "Detecção parada."}
+
+
+@app.get("/api/deteccao/status", tags=["deteccao"])
+def status_deteccao(
+    sala_id: Optional[str] = Query(default=None),
+    user: Dict[str, Any] = Depends(require_user),
+) -> Dict[str, Any]:
+    del user
+    # Prioridade: canal próprio da sala (câmera IP) rodando > canal global
+    # (webcam/vídeo, compartilhado por todas as salas) rodando > último
+    # estado conhecido da sala > último estado conhecido do canal global.
+    canal_sala = _canal_deteccao(sala_id) if sala_id else None
+    if canal_sala is not None:
+        estado_sala = canal_sala.status()
+        if estado_sala["rodando"]:
+            return estado_sala
+
+    estado_global = _canal_deteccao(_CANAL_GLOBAL).status()
+    if estado_global["rodando"]:
+        return estado_global
+
+    return canal_sala.status() if canal_sala is not None else estado_global
+
+
 # ==================== COACESSI ====================
 
 
@@ -363,7 +523,7 @@ def list_alerts(
             ORDER BY datetime(a.timestamp) DESC
             """
         ).fetchall()
-    return [alert_response(row) for row in rows]
+        return [alert_response(connection, row) for row in rows]
 
 
 @app.get("/api/coacessi/alertas/{alerta_id}", tags=["coacessi"])
@@ -373,7 +533,7 @@ def get_alert_details(
 ) -> Dict[str, Any]:
     del user
     with get_connection() as connection:
-        return alert_response(fetch_alert(connection, alerta_id))
+        return alert_response(connection, fetch_alert(connection, alerta_id))
 
 
 @app.put("/api/coacessi/alertas/{alerta_id}/iniciar", tags=["coacessi"])
@@ -424,6 +584,87 @@ def update_alert_status(
     return {"message": "Status atualizado com sucesso!"}
 
 
+@app.patch("/api/coacessi/alertas/{alerta_id}/atribuir", tags=["coacessi"])
+def assign_alert(
+    alerta_id: str = Path(..., min_length=1),
+    user: Dict[str, Any] = Depends(require_roles(Role.coacessi)),
+) -> Dict[str, Any]:
+    with get_connection() as connection:
+        fetch_alert(connection, alerta_id)
+        connection.execute(
+            "UPDATE alerts SET profissional_atribuido_id = ? WHERE id = ?",
+            (user["id"], alerta_id),
+        )
+    return {
+        "message": "Alerta atribuído com sucesso!",
+        "profissional": {"id": user["id"], "nome": user["nome"]},
+    }
+
+
+@app.patch("/api/coacessi/alertas/{alerta_id}/prioridade", tags=["coacessi"])
+def update_alert_priority(
+    payload: PriorityUpdate,
+    alerta_id: str = Path(..., min_length=1),
+    user: Dict[str, Any] = Depends(require_roles(Role.coacessi)),
+) -> Dict[str, str]:
+    del user
+    with get_connection() as connection:
+        fetch_alert(connection, alerta_id)
+        connection.execute(
+            "UPDATE alerts SET prioridade = ? WHERE id = ?",
+            (payload.prioridade.value, alerta_id),
+        )
+    return {"message": "Prioridade atualizada com sucesso!"}
+
+
+@app.post("/api/coacessi/alertas/{alerta_id}/intervencoes", tags=["coacessi"])
+def create_intervention(
+    payload: IntervencaoCreate,
+    alerta_id: str = Path(..., min_length=1),
+    user: Dict[str, Any] = Depends(require_roles(Role.coacessi)),
+) -> Dict[str, Any]:
+    with get_connection() as connection:
+        fetch_alert(connection, alerta_id)
+        intervencao_id = f"intervencao-{uuid.uuid4().hex[:12]}"
+        timestamp = utc_now()
+        descricao = payload.descricao.strip()
+        connection.execute(
+            """
+            INSERT INTO intervencoes (id, alerta_id, profissional_id, descricao, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (intervencao_id, alerta_id, user["id"], descricao, timestamp),
+        )
+    return {
+        "message": "Intervenção registrada com sucesso!",
+        "intervencao": {
+            "id": intervencao_id,
+            "timestamp": timestamp,
+            "profissional": {"id": user["id"], "nome": user["nome"]},
+            "descricao": descricao,
+        },
+    }
+
+
+@app.post("/api/coacessi/alertas/{alerta_id}/acesso-sensivel", tags=["coacessi"])
+def register_sensitive_access(
+    payload: AcessoSensivelRequest,
+    alerta_id: str = Path(..., min_length=1),
+    user: Dict[str, Any] = Depends(require_roles(Role.coacessi)),
+) -> Dict[str, str]:
+    with get_connection() as connection:
+        fetch_alert(connection, alerta_id)
+        connection.execute(
+            """
+            INSERT INTO acessos_sensiveis (id, alerta_id, user_id, motivo, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (f"acesso-{uuid.uuid4().hex[:12]}", alerta_id, user["id"], payload.motivo.strip(), utc_now()),
+        )
+    return {"message": "Acesso registrado com sucesso!"}
+
+
+@app.put("/api/coacessi/alertas/{alerta_id}/resolver", tags=["coacessi"])
 @app.put("/api/coacessi/alertas/{alerta_id}", tags=["coacessi"])
 def resolve_alert(
     payload: AlertResolution,

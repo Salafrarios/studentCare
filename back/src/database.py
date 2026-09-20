@@ -38,11 +38,12 @@ def _migrate_alerts_table(connection: sqlite3.Connection) -> None:
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'alerts'"
     ).fetchone()
     table_sql = (table[0] if table else "") or ""
-    if "em_andamento" in table_sql:
+    if "prioridade" in table_sql:
         return
 
-    # SQLite não permite alterar diretamente uma constraint CHECK. Recriamos
-    # somente esta tabela para aceitar o novo status do fluxo de atendimento.
+    # SQLite não permite alterar diretamente uma constraint CHECK nem inserir
+    # colunas com REFERENCES via ALTER TABLE ADD COLUMN. Recriamos somente
+    # esta tabela para aceitar os novos status e os campos de atribuição.
     connection.execute("DROP INDEX IF EXISTS idx_alerts_timestamp")
     connection.execute("ALTER TABLE alerts RENAME TO alerts_legacy")
     connection.execute(
@@ -53,9 +54,12 @@ def _migrate_alerts_table(connection: sqlite3.Connection) -> None:
             sala_id TEXT REFERENCES rooms(id) ON DELETE SET NULL,
             tipo_crise TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'novo'
-                CHECK (status IN ('novo', 'em_analise', 'em_andamento', 'resolvido')),
+                CHECK (status IN ('novo', 'em_analise', 'em_andamento', 'suporte_em_progresso', 'resolvido', 'descartado')),
+            prioridade TEXT NOT NULL DEFAULT 'media'
+                CHECK (prioridade IN ('baixa', 'media', 'alta')),
             confianca REAL NOT NULL DEFAULT 0,
             aluno_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+            profissional_atribuido_id TEXT REFERENCES users(id) ON DELETE SET NULL,
             snapshot_url TEXT,
             resultado TEXT CHECK (resultado IN ('confirmado', 'falso_alarme')),
             observacao TEXT,
@@ -68,10 +72,10 @@ def _migrate_alerts_table(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO alerts
             (id, timestamp, sala_id, tipo_crise, status, confianca,
-             aluno_user_id, snapshot_url, resultado, observacao, resolved_at)
+             aluno_user_id, snapshot_url, resultado, observacao, resolved_at, atendimento_iniciado_at)
         SELECT
             id, timestamp, sala_id, tipo_crise, status, confianca,
-            aluno_user_id, snapshot_url, resultado, observacao, resolved_at
+            aluno_user_id, snapshot_url, resultado, observacao, resolved_at, atendimento_iniciado_at
         FROM alerts_legacy
         """
     )
@@ -194,14 +198,33 @@ def init_database() -> None:
                 sala_id TEXT REFERENCES rooms(id) ON DELETE SET NULL,
                 tipo_crise TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'novo'
-                    CHECK (status IN ('novo', 'em_analise', 'em_andamento', 'resolvido')),
+                    CHECK (status IN ('novo', 'em_analise', 'em_andamento', 'suporte_em_progresso', 'resolvido', 'descartado')),
+                prioridade TEXT NOT NULL DEFAULT 'media'
+                    CHECK (prioridade IN ('baixa', 'media', 'alta')),
                 confianca REAL NOT NULL DEFAULT 0,
                 aluno_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+                profissional_atribuido_id TEXT REFERENCES users(id) ON DELETE SET NULL,
                 snapshot_url TEXT,
                 resultado TEXT CHECK (resultado IN ('confirmado', 'falso_alarme')),
                 observacao TEXT,
                 resolved_at TEXT,
                 atendimento_iniciado_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS intervencoes (
+                id TEXT PRIMARY KEY,
+                alerta_id TEXT REFERENCES alerts(id) ON DELETE CASCADE,
+                profissional_id TEXT REFERENCES users(id),
+                descricao TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS acessos_sensiveis (
+                id TEXT PRIMARY KEY,
+                alerta_id TEXT REFERENCES alerts(id) ON DELETE CASCADE,
+                user_id TEXT REFERENCES users(id),
+                motivo TEXT NOT NULL,
+                timestamp TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS notifications (
