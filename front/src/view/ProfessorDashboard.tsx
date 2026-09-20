@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useAuth } from "@/control/AuthContext";
-import { apiService } from "@/model/api";
+import { apiService, Sala, FonteDeteccao, StatusDeteccao, IniciarDeteccaoRequest } from "@/model/api";
 import { useNotifications } from "@/control/useNotifications";
+
+const FONTES: { value: FonteDeteccao; label: string }[] = [
+  { value: "webcam", label: "Webcam" },
+  { value: "arquivo", label: "Vídeo de teste (.mp4)" },
+  { value: "camera_ip", label: "Câmera IP da sala" },
+];
 
 const SALAS = [
   { value: "", label: "Selecione uma sala" },
@@ -29,6 +35,7 @@ export default function ProfessorDashboard() {
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const [salas, setSalas] = useState<{ value: string; label: string }[]>(SALAS);
+  const [salasCompletas, setSalasCompletas] = useState<Sala[]>([]);
   const [salaId, setSalaId] = useState("");
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [cameraLoading, setCameraLoading] = useState(false);
@@ -38,12 +45,23 @@ export default function ProfessorDashboard() {
   const [enviando, setEnviando] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
+  // Detecção de ações
+  const [fonteDeteccao, setFonteDeteccao] = useState<FonteDeteccao>("webcam");
+  const [caminhoArquivo, setCaminhoArquivo] = useState("");
+  const [statusDeteccao, setStatusDeteccao] = useState<StatusDeteccao | null>(null);
+  const [deteccaoLoading, setDeteccaoLoading] = useState(false);
+  const [deteccaoErro, setDeteccaoErro] = useState<string | null>(null);
+  const canvasEsqueletoRef = useRef<HTMLCanvasElement>(null);
+
+  const salaSelecionada = salasCompletas.find((s) => s.id === salaId) || null;
+
   // Carrega salas cadastradas da API (cadastradas pelo admin de TI)
   useEffect(() => {
     const carregarSalas = async () => {
       try {
         const dados = await apiService.getSalas();
         if (dados && dados.length > 0) {
+          setSalasCompletas(dados);
           const formatadas = [
             { value: "", label: "Selecione uma sala" },
             ...dados.map((s) => ({
@@ -78,6 +96,77 @@ export default function ProfessorDashboard() {
     };
     carregarCamera();
   }, [salaId]);
+
+  // Polling do status de detecção enquanto uma sala estiver selecionada
+  useEffect(() => {
+    if (!salaId) {
+      setStatusDeteccao(null);
+      return;
+    }
+
+    let ativo = true;
+    const consultarStatus = async () => {
+      try {
+        const s = await apiService.getStatusDeteccao(salaId);
+        if (ativo) setStatusDeteccao(s);
+      } catch {
+        if (ativo) setStatusDeteccao(null);
+      }
+    };
+
+    consultarStatus();
+    const intervalId = setInterval(consultarStatus, 1500);
+
+    return () => {
+      ativo = false;
+      clearInterval(intervalId);
+    };
+  }, [salaId, fonteDeteccao]);
+
+  // Desenha o esqueleto (25 pontos normalizados) no canvas sobreposto à câmera
+  useEffect(() => {
+    const canvas = canvasEsqueletoRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!statusDeteccao?.rodando || !statusDeteccao.esqueleto) return;
+    ctx.fillStyle = "#34d399";
+    for (const [x, y] of statusDeteccao.esqueleto) {
+      ctx.beginPath();
+      ctx.arc(x * canvas.width, y * canvas.height, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [statusDeteccao]);
+
+  const handleIniciarDeteccao = async () => {
+    if (!salaId) return;
+    setDeteccaoLoading(true);
+    setDeteccaoErro(null);
+    try {
+      const dados: IniciarDeteccaoRequest = { sala_id: salaId, fonte: fonteDeteccao };
+      if (fonteDeteccao === "arquivo") dados.caminho_arquivo = caminhoArquivo;
+      await apiService.iniciarDeteccao(dados);
+      setStatusDeteccao(await apiService.getStatusDeteccao(salaId));
+    } catch (err) {
+      setDeteccaoErro(err instanceof Error ? err.message : "Erro ao iniciar detecção.");
+    } finally {
+      setDeteccaoLoading(false);
+    }
+  };
+
+  const handlePararDeteccao = async () => {
+    setDeteccaoLoading(true);
+    setDeteccaoErro(null);
+    try {
+      await apiService.pararDeteccao(salaId || undefined);
+      if (salaId) setStatusDeteccao(await apiService.getStatusDeteccao(salaId));
+    } catch (err) {
+      setDeteccaoErro(err instanceof Error ? err.message : "Erro ao parar detecção.");
+    } finally {
+      setDeteccaoLoading(false);
+    }
+  };
 
   const handleChamarAuxilio = async (e: FormEvent) => {
     e.preventDefault();
@@ -135,8 +224,67 @@ export default function ProfessorDashboard() {
         </select>
       </div>
 
+      {/* Fonte da detecção */}
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <label htmlFor="fonte-deteccao" className="block text-sm font-semibold text-gray-700 mb-1.5">
+            Fonte da detecção
+          </label>
+          <select
+            id="fonte-deteccao"
+            value={fonteDeteccao}
+            onChange={(e) => setFonteDeteccao(e.target.value as FonteDeteccao)}
+            className="w-full sm:w-64 px-4 py-3 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-sm bg-white"
+          >
+            {FONTES.map((f) => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {fonteDeteccao === "arquivo" && (
+          <div className="flex-1 min-w-[240px]">
+            <label htmlFor="caminho-arquivo" className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Caminho do arquivo .mp4 no servidor
+            </label>
+            <input
+              id="caminho-arquivo"
+              type="text"
+              value={caminhoArquivo}
+              onChange={(e) => setCaminhoArquivo(e.target.value)}
+              placeholder="/caminho/absoluto/no/servidor/video.mp4"
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-sm font-mono"
+            />
+          </div>
+        )}
+
+        {fonteDeteccao === "camera_ip" && (
+          <div className="flex-1 min-w-[240px]">
+            <span className="block text-sm font-semibold text-gray-700 mb-1.5">URL da câmera IP da sala</span>
+            {salaSelecionada?.camera_url ? (
+              <p className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 text-sm font-mono text-gray-600 truncate">
+                {salaSelecionada.camera_url}
+                <span className="block text-xs font-sans text-gray-400 mt-1">Configurada em Admin &gt; Salas</span>
+              </p>
+            ) : (
+              <p className="px-4 py-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-700">
+                {salaId
+                  ? "Esta sala não possui câmera IP cadastrada. Configure em Admin > Salas."
+                  : "Selecione uma sala para ver a câmera IP cadastrada."}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Câmera */}
       <div className="bg-black rounded-2xl overflow-hidden aspect-video relative">
+        <canvas
+          ref={canvasEsqueletoRef}
+          width={320}
+          height={180}
+          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+        />
         {!salaId ? (
           <div className="absolute inset-0 flex items-center justify-center text-gray-400">
             <div className="text-center">
@@ -171,6 +319,68 @@ export default function ProfessorDashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
               <p>Câmera indisponível para esta sala</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Controles e status da detecção de ações */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleIniciarDeteccao}
+            disabled={
+              !salaId ||
+              deteccaoLoading ||
+              !!statusDeteccao?.rodando ||
+              (fonteDeteccao === "arquivo" && !caminhoArquivo.trim()) ||
+              (fonteDeteccao === "camera_ip" && !salaSelecionada?.camera_url)
+            }
+            className="bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-300 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed text-sm"
+          >
+            Iniciar detecção
+          </button>
+          <button
+            onClick={handlePararDeteccao}
+            disabled={!salaId || deteccaoLoading || !statusDeteccao?.rodando}
+            className="bg-gray-100 hover:bg-gray-200 disabled:text-gray-400 text-gray-700 font-semibold py-2.5 px-5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed text-sm"
+          >
+            Parar detecção
+          </button>
+          <span className="text-sm text-gray-500">
+            {statusDeteccao?.rodando ? `Rodando (fonte: ${statusDeteccao.fonte})` : "Detecção parada"}
+          </span>
+        </div>
+
+        {deteccaoErro && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{deteccaoErro}</p>
+        )}
+        {statusDeteccao?.erro && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{statusDeteccao.erro}</p>
+        )}
+
+        {statusDeteccao?.rodando && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-gray-500 text-xs uppercase font-semibold mb-1">Ação prevista</p>
+              <p className="font-medium text-gray-900">{statusDeteccao.acao_prevista || "—"}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-xs uppercase font-semibold mb-1">Confiança</p>
+              <p className="font-medium text-gray-900">
+                {statusDeteccao.confianca != null ? `${Math.round(statusDeteccao.confianca * 100)}%` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-xs uppercase font-semibold mb-1">
+                Buffer ({statusDeteccao.buffer_frames}/179)
+              </p>
+              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-all"
+                  style={{ width: `${Math.min(100, (statusDeteccao.buffer_frames / 179) * 100)}%` }}
+                />
+              </div>
             </div>
           </div>
         )}

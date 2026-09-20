@@ -23,6 +23,9 @@ import {
   Notificacao,
   Sala,
   NovaSala,
+  FonteDeteccao,
+  IniciarDeteccaoRequest,
+  StatusDeteccao,
 } from "./api";
 
 /** Simula latência de rede */
@@ -537,6 +540,76 @@ class MockApiService {
     const removida = salasMock.splice(index, 1)[0];
     console.log("%c🗑️ Sala removida:", "color: #E63946; font-weight: bold;", removida);
     return { message: "Sala removida com sucesso!" };
+  }
+
+  // ==================== DETECÇÃO (mock) ====================
+  // Canal global (webcam/arquivo) é compartilhado por todas as salas;
+  // canal por câmera IP é independente por sala. Dados fictícios, sem IA real.
+
+  private deteccaoGlobal: { rodando: boolean; fonte: FonteDeteccao | null } = { rodando: false, fonte: null };
+  private deteccaoPorSala: Record<string, boolean> = {};
+
+  private gerarEsqueletoMock(): [number, number][] {
+    return Array.from({ length: 25 }, () => [
+      0.3 + Math.random() * 0.4,
+      0.2 + Math.random() * 0.6,
+    ]);
+  }
+
+  async iniciarDeteccao(dados: IniciarDeteccaoRequest): Promise<{ message: string }> {
+    await delay(500);
+    if (dados.fonte === "camera_ip") {
+      const sala = salasMock.find((s) => s.id === dados.sala_id);
+      if (!sala?.camera_url) throw new Error("Sala sem câmera IP cadastrada.");
+      this.deteccaoPorSala[dados.sala_id] = true;
+    } else {
+      if (dados.fonte === "arquivo" && !dados.caminho_arquivo) {
+        throw new Error("Informe o caminho do arquivo .mp4.");
+      }
+      this.deteccaoGlobal = { rodando: true, fonte: dados.fonte };
+    }
+    console.log("%c▶️ Detecção iniciada (mock):", "color: #2D6A4F; font-weight: bold;", dados);
+    return { message: "Detecção iniciada (mock)." };
+  }
+
+  async pararDeteccao(salaId?: string): Promise<{ message: string }> {
+    await delay(300);
+    if (salaId && this.deteccaoPorSala[salaId]) {
+      this.deteccaoPorSala[salaId] = false;
+    } else {
+      this.deteccaoGlobal = { rodando: false, fonte: null };
+    }
+    return { message: "Detecção parada (mock)." };
+  }
+
+  async getStatusDeteccao(salaId: string): Promise<StatusDeteccao> {
+    await delay(200);
+    const rodandoPorSala = !!this.deteccaoPorSala[salaId];
+    const rodando = rodandoPorSala || this.deteccaoGlobal.rodando;
+    if (!rodando) {
+      return {
+        rodando: false,
+        sala_id: null,
+        fonte: null,
+        buffer_frames: 0,
+        acao_prevista: null,
+        confianca: null,
+        esqueleto: null,
+        gatilho_automatico_ativo: false,
+        erro: null,
+      };
+    }
+    return {
+      rodando: true,
+      sala_id: salaId,
+      fonte: rodandoPorSala ? "camera_ip" : this.deteccaoGlobal.fonte,
+      buffer_frames: Math.floor(Math.random() * 180),
+      acao_prevista: "Comportamento típico",
+      confianca: 0.7 + Math.random() * 0.25,
+      esqueleto: this.gerarEsqueletoMock(),
+      gatilho_automatico_ativo: true,
+      erro: null,
+    };
   }
 }
 

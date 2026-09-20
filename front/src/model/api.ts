@@ -118,6 +118,29 @@ export interface NovaSala {
   descricao?: string;
 }
 
+export type FonteDeteccao = "webcam" | "arquivo" | "camera_ip";
+
+export interface IniciarDeteccaoRequest {
+  sala_id: string;
+  fonte: FonteDeteccao;
+  indice_camera?: number;
+  caminho_arquivo?: string;
+}
+
+export interface StatusDeteccao {
+  rodando: boolean;
+  sala_id: string | null;
+  fonte: FonteDeteccao | null;
+  /** Quantidade de frames já acumulados no buffer (0 a 179) */
+  buffer_frames: number;
+  acao_prevista: string | null;
+  confianca: number | null;
+  /** 25 pontos normalizados (0-1) do esqueleto detectado */
+  esqueleto: [number, number][] | null;
+  gatilho_automatico_ativo: boolean;
+  erro: string | null;
+}
+
 class ApiService {
   private baseUrl: string;
   // O token e sessão são mantidos em memória. O backend FastAPI gerencia autenticação (Cookies HttpOnly ou Bearer Token).
@@ -266,6 +289,21 @@ class ApiService {
 
   async removerSala(id: string): Promise<{ message: string }> {
     return this.request(`/admin/salas/${id}`, "DELETE");
+  }
+
+  // ==================== DETECÇÃO ====================
+
+  async iniciarDeteccao(dados: IniciarDeteccaoRequest): Promise<{ message: string }> {
+    return this.request("/deteccao/iniciar", "POST", dados);
+  }
+
+  async pararDeteccao(salaId?: string): Promise<{ message: string }> {
+    const query = salaId ? `?sala_id=${encodeURIComponent(salaId)}` : "";
+    return this.request(`/deteccao/parar${query}`, "POST");
+  }
+
+  async getStatusDeteccao(salaId: string): Promise<StatusDeteccao> {
+    return this.request<StatusDeteccao>(`/deteccao/status?sala_id=${encodeURIComponent(salaId)}`);
   }
 }
 

@@ -279,7 +279,7 @@ export default function AdminDashboard() {
 
             <div>
               <label htmlFor="camera_url" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                URL da Câmera (Stream RTSP / HLS / IP)
+                URL da Câmera IP (usada quando a detecção estiver em modo &quot;Câmera IP&quot;)
               </label>
               <input
                 id="camera_url"
