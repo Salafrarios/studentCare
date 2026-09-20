@@ -40,6 +40,22 @@ export interface ChamadoAuxilio {
   descricao: string;
 }
 
+export type StatusAlerta = "novo" | "em_analise" | "suporte_em_progresso" | "resolvido" | "descartado";
+
+export type PrioridadeAlerta = "baixa" | "media" | "alta";
+
+export interface Profissional {
+  id: string;
+  nome: string;
+}
+
+export interface Intervencao {
+  id: string;
+  timestamp: string;
+  profissional: Profissional;
+  descricao: string;
+}
+
 export interface Alerta {
   id: string;
   timestamp: string;
@@ -47,17 +63,16 @@ export interface Alerta {
   tipo_crise: string;
   status: "novo" | "em_analise" | "em_andamento" | "resolvido";
   confianca: number;
+  profissional_atribuido?: Profissional;
+  historico_intervencoes: Intervencao[];
   aluno_info?: {
     nome: string;
     condicao: string;
-    contato_emergencia: string;
+    comunicacao_preferida?: string;
+    diretrizes_apoio?: string;
+    contato_emergencia?: string;
   };
   snapshot_url?: string;
-}
-
-export interface ResolucaoAlerta {
-  resultado: "confirmado" | "falso_alarme";
-  observacao: string;
 }
 
 export interface Estatisticas {
