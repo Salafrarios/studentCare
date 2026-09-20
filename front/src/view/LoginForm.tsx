@@ -17,6 +17,7 @@ export default function LoginForm() {
         aluno: "/aluno",
         professor: "/professor",
         coacessi: "/coacessi",
+        admin: "/admin",
       };
       router.push(routes[user.role] || "/");
     }

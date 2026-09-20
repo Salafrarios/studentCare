@@ -9,7 +9,7 @@ export interface UserData {
   id: string;
   nome: string;
   email: string;
-  role: "aluno" | "professor" | "coacessi";
+  role: "aluno" | "professor" | "coacessi" | "admin";
 }
 
 export interface LoginResponse {
@@ -71,6 +71,25 @@ export interface Notificacao {
   tipo: "alerta" | "info" | "sucesso";
   timestamp: string;
   lida: boolean;
+}
+
+export interface Sala {
+  id: string;
+  nome: string;
+  bloco?: string;
+  capacidade?: number;
+  camera_url?: string;
+  status: "ativo" | "inativo" | "manutencao";
+  descricao?: string;
+}
+
+export interface NovaSala {
+  nome: string;
+  bloco?: string;
+  capacidade?: number;
+  camera_url?: string;
+  status: "ativo" | "inativo" | "manutencao";
+  descricao?: string;
 }
 
 class ApiService {
@@ -178,6 +197,24 @@ class ApiService {
 
   async marcarNotificacaoLida(id: string): Promise<{ message: string }> {
     return this.request(`/notificacoes/${id}/lida`, "PUT");
+  }
+
+  // ==================== ADMIN TI - GESTÃO DE SALAS ====================
+
+  async getSalas(): Promise<Sala[]> {
+    return this.request<Sala[]>("/admin/salas");
+  }
+
+  async cadastrarSala(dados: NovaSala): Promise<{ message: string; sala: Sala }> {
+    return this.request("/admin/salas", "POST", dados);
+  }
+
+  async atualizarSala(id: string, dados: Partial<NovaSala>): Promise<{ message: string; sala: Sala }> {
+    return this.request(`/admin/salas/${id}`, "PUT", dados);
+  }
+
+  async removerSala(id: string): Promise<{ message: string }> {
+    return this.request(`/admin/salas/${id}`, "DELETE");
   }
 }
 

@@ -17,6 +17,8 @@ import {
   ResolucaoAlerta,
   Estatisticas,
   Notificacao,
+  Sala,
+  NovaSala,
 } from "./api";
 
 /** Simula latência de rede */
@@ -24,6 +26,81 @@ const delay = (ms: number = 600) => new Promise((r) => setTimeout(r, ms));
 
 /** Banco de dados em memória */
 let cadastroAluno: CadastroNeurodivergente | null = null;
+
+const salasMock: Sala[] = [
+  {
+    id: "sala-101",
+    nome: "Sala 101",
+    bloco: "Bloco A - Térreo",
+    capacidade: 45,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-101",
+    status: "ativo",
+    descricao: "Equipada com câmera PTZ de alta resolução e microfone direcional.",
+  },
+  {
+    id: "sala-102",
+    nome: "Sala 102",
+    bloco: "Bloco A - 1º Andar",
+    capacidade: 50,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-102",
+    status: "ativo",
+    descricao: "Sala de aula padrão para turmas de ciclo básico.",
+  },
+  {
+    id: "sala-103",
+    nome: "Sala 103",
+    bloco: "Bloco A - 1º Andar",
+    capacidade: 40,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-103",
+    status: "ativo",
+    descricao: "Sala com isolamento acústico.",
+  },
+  {
+    id: "sala-201",
+    nome: "Sala 201",
+    bloco: "Bloco B - 2º Andar",
+    capacidade: 60,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-201",
+    status: "manutencao",
+    descricao: "Câmera em calibração pelo setor de TI.",
+  },
+  {
+    id: "sala-202",
+    nome: "Sala 202",
+    bloco: "Bloco B - 2º Andar",
+    capacidade: 55,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/sala-202",
+    status: "ativo",
+    descricao: "Sala ampla com ventilação natural.",
+  },
+  {
+    id: "lab-info-1",
+    nome: "Lab. Informática 1",
+    bloco: "Prédio de Tecnologia - 2º Andar",
+    capacidade: 35,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/lab-info-1",
+    status: "ativo",
+    descricao: "Laboratório com 35 estações de trabalho e câmera de ângulo aberto.",
+  },
+  {
+    id: "lab-info-2",
+    nome: "Lab. Informática 2",
+    bloco: "Prédio de Tecnologia - 2º Andar",
+    capacidade: 35,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/lab-info-2",
+    status: "ativo",
+    descricao: "Laboratório voltado a disciplinas de computação gráfica.",
+  },
+  {
+    id: "auditorio",
+    nome: "Auditório Central",
+    bloco: "Centro de Convenções",
+    capacidade: 220,
+    camera_url: "rtsp://camera.universidade.edu.br/stream/auditorio",
+    status: "ativo",
+    descricao: "Auditório principal com duas câmeras interconectadas.",
+  },
+];
 
 const alertasMock: Alerta[] = [
   {
@@ -128,6 +205,10 @@ class MockApiService {
       "coacessi@teste.com": {
         token: "mock-token-coacessi-xyz",
         user: { id: "usr-003", nome: "Carla Rodrigues", email: "coacessi@teste.com", role: "coacessi" },
+      },
+      "admin@teste.com": {
+        token: "mock-token-admin-xyz",
+        user: { id: "usr-004", nome: "Carlos Eduardo (TI)", email: "admin@teste.com", role: "admin" },
       },
     };
 
@@ -237,6 +318,51 @@ class MockApiService {
     const notif = notificacoesMock.find((n) => n.id === id);
     if (notif) notif.lida = true;
     return { message: "Notificação marcada como lida" };
+  }
+
+  // ==================== ADMIN TI - GESTÃO DE SALAS ====================
+
+  async getSalas(): Promise<Sala[]> {
+    await delay(300);
+    return [...salasMock];
+  }
+
+  async cadastrarSala(dados: NovaSala): Promise<{ message: string; sala: Sala }> {
+    await delay(700);
+    const novaSala: Sala = {
+      id: `sala-${Date.now().toString().slice(-4)}`,
+      nome: dados.nome,
+      bloco: dados.bloco,
+      capacidade: dados.capacidade || 30,
+      camera_url: dados.camera_url || `rtsp://camera.universidade.edu.br/stream/${dados.nome.toLowerCase().replace(/\s+/g, "-")}`,
+      status: dados.status || "ativo",
+      descricao: dados.descricao,
+    };
+
+    salasMock.unshift(novaSala);
+    console.log("%c🏢 Nova sala cadastrada:", "color: #2D6A4F; font-weight: bold;", novaSala);
+    return { message: "Sala cadastrada com sucesso!", sala: novaSala };
+  }
+
+  async atualizarSala(id: string, dados: Partial<NovaSala>): Promise<{ message: string; sala: Sala }> {
+    await delay(500);
+    const index = salasMock.findIndex((s) => s.id === id);
+    if (index === -1) {
+      throw new Error("Sala não encontrada");
+    }
+    salasMock[index] = { ...salasMock[index], ...dados };
+    return { message: "Sala atualizada com sucesso!", sala: salasMock[index] };
+  }
+
+  async removerSala(id: string): Promise<{ message: string }> {
+    await delay(400);
+    const index = salasMock.findIndex((s) => s.id === id);
+    if (index === -1) {
+      throw new Error("Sala não encontrada");
+    }
+    const removida = salasMock.splice(index, 1)[0];
+    console.log("%c🗑️ Sala removida:", "color: #E63946; font-weight: bold;", removida);
+    return { message: "Sala removida com sucesso!" };
   }
 }
 

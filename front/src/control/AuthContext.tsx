@@ -14,6 +14,7 @@ interface AuthContextType {
   isAluno: () => boolean;
   isProfessor: () => boolean;
   isCoacessi: () => boolean;
+  isAdmin: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -51,10 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAluno = useCallback(() => user?.role === "aluno", [user]);
   const isProfessor = useCallback(() => user?.role === "professor", [user]);
   const isCoacessi = useCallback(() => user?.role === "coacessi", [user]);
+  const isAdmin = useCallback(() => user?.role === "admin", [user]);
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, error, login, logout, clearError, isAluno, isProfessor, isCoacessi }}
+      value={{ user, isLoading, isAuthenticated: !!user, error, login, logout, clearError, isAluno, isProfessor, isCoacessi, isAdmin }}
     >
       {children}
     </AuthContext.Provider>

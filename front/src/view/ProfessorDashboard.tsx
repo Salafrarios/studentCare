@@ -28,6 +28,7 @@ const TIPOS_CRISE = [
 export default function ProfessorDashboard() {
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
+  const [salas, setSalas] = useState<{ value: string; label: string }[]>(SALAS);
   const [salaId, setSalaId] = useState("");
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [cameraLoading, setCameraLoading] = useState(false);
@@ -36,6 +37,28 @@ export default function ProfessorDashboard() {
   const [descricao, setDescricao] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  // Carrega salas cadastradas da API (cadastradas pelo admin de TI)
+  useEffect(() => {
+    const carregarSalas = async () => {
+      try {
+        const dados = await apiService.getSalas();
+        if (dados && dados.length > 0) {
+          const formatadas = [
+            { value: "", label: "Selecione uma sala" },
+            ...dados.map((s) => ({
+              value: s.id,
+              label: s.bloco ? `${s.nome} (${s.bloco})` : s.nome,
+            })),
+          ];
+          setSalas(formatadas);
+        }
+      } catch {
+        // Mantém fallback estático
+      }
+    };
+    carregarSalas();
+  }, []);
 
   useEffect(() => {
     if (!salaId) {
@@ -106,7 +129,7 @@ export default function ProfessorDashboard() {
           onChange={(e) => setSalaId(e.target.value)}
           className="w-full sm:w-72 px-4 py-3 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-sm bg-white"
         >
-          {SALAS.map((s) => (
+          {salas.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
